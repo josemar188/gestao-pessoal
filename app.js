@@ -42,7 +42,16 @@ let cfg = null;
 let store = null;
 
 const catById = (id) => S.categories.find((c) => c.id === id);
-const monthExpenses = (m = S.month) => S.expenses.filter((e) => inMonth(e, m));
+const isIncome = (e) => e.kind === 'income';
+const monthAll = (m = S.month) => S.expenses.filter((e) => inMonth(e, m));
+const monthExpenses = (m = S.month) => monthAll(m).filter((e) => !isIncome(e));
+const monthIncome = (m = S.month) => monthAll(m).filter(isIncome);
+// Total a mostrar para um conjunto misto: gastos, ou entradas se só houver entradas.
+const mixedTotal = (items) => {
+  const out = sum(items.filter((e) => !isIncome(e)));
+  const inc = sum(items.filter(isIncome));
+  return out > 0 || !inc ? fmt(out) : `+${fmt(inc)}`;
+};
 
 function guessCategory(merchant) {
   const m = norm(merchant);
@@ -159,6 +168,7 @@ function demoData(categories) {
   for (let back = 0; back < 6; back++) {
     const m = addMonths(firstOfMonth(now), -back);
     const lastDay = back === 0 ? now.getDate() : daysIn(m);
+    out.push({ kind: 'income', amount: 1650, merchant: 'Ordenado', category_id: null, card: null, note: null, spent_at: new Date(m.getFullYear(), m.getMonth(), 1, 9, 0).toISOString(), source: 'manual' });
     for (let d = 1; d <= lastDay; d++) {
       const count = Math.floor(rnd() * 3.2);
       for (let i = 0; i < count; i++) {
@@ -266,7 +276,7 @@ function render() {
   $('#app').innerHTML = `
     ${S.tab === 'definicoes' ? '<header class="top"><h1 class="title">Definições</h1></header>' : header()}
     <main>${views[S.tab]()}</main>
-    <button class="fab" data-a="add" aria-label="Adicionar gasto">+</button>
+    <button class="fab" data-a="add" aria-label="Adicionar registo">+</button>
     <nav class="tabs">${TABS.map(([id, label]) => `
       <button data-a="tab" data-tab="${id}" class="${S.tab === id ? 'on' : ''}" ${S.tab === id ? 'aria-current="page"' : ''}>
         <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span>
@@ -277,6 +287,7 @@ function render() {
 function header() {
   const list = monthExpenses();
   const total = sum(list);
+  const income = sum(monthIncome());
   const prevMonth = addMonths(S.month, -1);
   const prev = sum(monthExpenses(prevMonth));
   const isCurrent = S.month.getTime() === firstOfMonth(new Date()).getTime();
@@ -294,7 +305,11 @@ function header() {
       <button data-a="refresh" class="refresh" aria-label="Atualizar">↻</button>
     </div>
     <div class="total">${fmt(total)}</div>
-    <div class="sub">${list.length} ${list.length === 1 ? 'registo' : 'registos'}${delta}</div>
+    <div class="sub">${list.length} ${list.length === 1 ? 'gasto' : 'gastos'}${delta}</div>
+    ${income > 0 ? `<div class="flow">
+      <span><small>Entradas</small><b>+${fmt(income)}</b></span>
+      <span><small>Saldo</small><b>${fmt(income - total)}</b></span>
+    </div>` : ''}
   </header>`;
 }
 
@@ -311,6 +326,7 @@ function budgetStatus(m = S.month) {
 function viewGastos() {
   const list = monthExpenses();
   const used = S.categories.filter((c) => list.some((e) => e.category_id === c.id));
+  const hasIncome = monthIncome().length > 0;
   const alerts = budgetStatus().filter((b) => b.pct >= 0.8);
   return `
   ${alerts.map((b) => `
@@ -319,39 +335,49 @@ function viewGastos() {
       ${esc(b.c.emoji)} ${esc(b.c.name)}: ${fmt(b.spent)} de ${fmt(b.budget)} (${Math.round(b.pct * 100)}%)
     </button>`).join('')}
   <input id="q" type="search" placeholder="Procurar comerciante ou nota" value="${esc(S.q)}" aria-label="Procurar">
-  ${used.length > 1 ? `<div class="chips">
+  ${used.length + (hasIncome ? 1 : 0) > 1 ? `<div class="chips">
     <button data-a="chip" data-cat="" class="${S.cat ? '' : 'on'}">Todas</button>
     ${used.map((c) => `<button data-a="chip" data-cat="${c.id}" class="${S.cat === c.id ? 'on' : ''}"><i style="--c:${color(c.color)}"></i>${esc(c.name)}</button>`).join('')}
+    ${hasIncome ? `<button data-a="chip" data-cat="income" class="${S.cat === 'income' ? 'on' : ''}"><i style="--c:var(--good)"></i>Entradas</button>` : ''}
   </div>` : ''}
   <div id="list">${listHTML()}</div>`;
 }
 
 function listHTML() {
   const q = norm(S.q);
-  const list = monthExpenses().filter((e) => (!S.cat || e.category_id === S.cat) && (!q || norm(e.merchant).includes(q) || norm(e.note).includes(q)));
+  const inCat = (e) => (S.cat === 'income' ? isIncome(e) : !S.cat || (!isIncome(e) && e.category_id === S.cat));
+  const list = monthAll().filter((e) => inCat(e) && (!q || norm(e.merchant).includes(q) || norm(e.note).includes(q)));
   if (!list.length) {
-    return `<div class="empty"><p>${S.q || S.cat ? 'Nenhum gasto corresponde ao filtro.' : 'Ainda não há gastos neste mês.'}</p>
-      <button class="btn primary" data-a="add">Adicionar gasto</button></div>`;
+    return `<div class="empty"><p>${S.q || S.cat ? 'Nenhum registo corresponde ao filtro.' : 'Ainda não há registos neste mês.'}</p>
+      <button class="btn primary" data-a="add">Adicionar registo</button></div>`;
   }
   const today = dayKey(new Date());
   const yesterday = dayKey(new Date(Date.now() - 864e5));
   const groups = new Map();
   list.forEach((e) => { const k = dayKey(new Date(e.spent_at)); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); });
-  const c = S.cat ? catById(S.cat) : null;
+  const c = S.cat && S.cat !== 'income' ? catById(S.cat) : null;
   const filtered = S.cat || q
-    ? `<div class="card subtotal"><span><b>${c ? `${esc(c.emoji)} ${esc(c.name)}` : 'Resultados da pesquisa'}</b><small>${list.length} ${list.length === 1 ? 'registo' : 'registos'} em ${esc(monthName(S.month, { month: 'long' }))}</small></span><strong>${fmt(sum(list))}</strong></div>`
+    ? `<div class="card subtotal"><span><b>${c ? `${esc(c.emoji)} ${esc(c.name)}` : S.cat === 'income' ? 'Entradas' : 'Resultados da pesquisa'}</b><small>${list.length} ${list.length === 1 ? 'registo' : 'registos'} em ${esc(monthName(S.month, { month: 'long' }))}</small></span><strong>${mixedTotal(list)}</strong></div>`
     : '';
   return filtered + [...groups].map(([k, items]) => {
     const d = new Date(items[0].spent_at);
     const label = k === today ? 'Hoje' : k === yesterday ? 'Ontem' : d.toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
     return `<section class="day">
-      <h2><span>${esc(label)}</span><span>${fmt(sum(items))}</span></h2>
+      <h2><span>${esc(label)}</span><span>${mixedTotal(items)}</span></h2>
       <div class="card rows">${items.map(rowHTML).join('')}</div>
     </section>`;
   }).join('');
 }
 
 function rowHTML(e) {
+  if (isIncome(e)) {
+    const t = new Date(e.spent_at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+    return `<button class="row" data-a="edit" data-id="${e.id}">
+      <span class="dot" style="--c:var(--good)">💶</span>
+      <span class="who"><b>${esc(e.merchant || 'Entrada')}</b><small><span>Entrada</span></small></span>
+      <span class="amt in"><b>+${fmt(e.amount)}</b><small>${t}</small></span>
+    </button>`;
+  }
   const c = catById(e.category_id);
   const time = new Date(e.spent_at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
   const meta = esc(c ? c.name : 'Sem categoria');
@@ -375,8 +401,19 @@ function columns(items) {
 
 function viewResumo() {
   const list = monthExpenses();
-  if (!list.length) return '<div class="empty"><p>Sem gastos neste mês para resumir.</p></div>';
   const total = sum(list);
+  const income = sum(monthIncome());
+  const usedPct = income > 0 ? total / income : 0;
+  const balance = income > 0 ? `
+  <section class="card block">
+    <h2>Balanço do mês</h2>
+    <div class="hl"><span>Entradas</span><b class="good">+${fmt(income)}</b></div>
+    <div class="hl"><span>Gastos</span><b>${fmt(total)}</b></div>
+    <div class="track big ${usedPct > 1 ? 'bad' : usedPct >= 0.9 ? 'warn' : ''}"><i style="width:${Math.min(usedPct * 100, 100).toFixed(1)}%"></i></div>
+    <div class="hl"><span>Saldo</span><b class="${income - total < 0 ? 'neg' : ''}">${fmt(income - total)}</b></div>
+    <small>${usedPct > 1 ? `Gastaste mais ${fmt(total - income)} do que entrou.` : `Gastaste ${Math.round(usedPct * 100)}% do que entrou.`}</small>
+  </section>` : '';
+  if (!list.length) return balance || '<div class="empty"><p>Sem gastos neste mês para resumir.</p></div>';
   const now = new Date();
   const isCurrent = inMonth({ spent_at: now }, S.month);
   const days = isCurrent ? now.getDate() : daysIn(S.month);
@@ -399,7 +436,7 @@ function viewResumo() {
     return { value: v, label: monthName(m, { month: 'short' }).replace('.', ''), tip: `${monthName(m)}: ${fmt(v)}`, on: i === 5 };
   });
 
-  return `
+  return `${balance}
   <div class="tiles">
     <div class="card tile"><small>Média por dia</small><b>${fmt(total / days)}</b></div>
     <div class="card tile"><small>Maior gasto</small><b>${fmt(biggest.amount)}</b><em>${esc(biggest.merchant || '—')}</em></div>
@@ -501,24 +538,29 @@ function closeSheet() {
 
 function expenseSheet(e) {
   const isNew = !e;
-  e = e || { amount: '', merchant: '', category_id: '', card: '', note: '', spent_at: new Date().toISOString() };
+  e = e || { amount: '', merchant: '', category_id: '', card: '', note: '', spent_at: new Date().toISOString(), kind: S.cat === 'income' ? 'income' : 'expense' };
+  const inc = isIncome(e);
   openSheet(`
   <form data-f="expense" class="form" data-id="${e.id || ''}">
-    <h2>${isNew ? 'Novo gasto' : 'Editar gasto'}</h2>
+    <h2>${isNew ? 'Novo registo' : 'Editar registo'}</h2>
+    <fieldset class="seg"><legend class="sr">Tipo</legend>
+      <label><input type="radio" name="kind" value="expense" ${inc ? '' : 'checked'}><span>Gasto</span></label>
+      <label><input type="radio" name="kind" value="income" ${inc ? 'checked' : ''}><span>Entrada</span></label>
+    </fieldset>
     <label class="amount">Montante (€)<input name="amount" inputmode="decimal" required placeholder="0,00" value="${isNew ? '' : esc(String(Number(e.amount).toFixed(2)).replace('.', ','))}" autocomplete="off"></label>
-    <label>Comerciante ou descrição<input name="merchant" required value="${esc(e.merchant)}" autocomplete="off"></label>
-    <label>Categoria<select name="category_id" ${isNew ? 'data-auto="1"' : ''}>
+    <label><span class="only-expense">Comerciante ou descrição</span><span class="only-income">Origem (por exemplo, Ordenado)</span><input name="merchant" required value="${esc(e.merchant)}" autocomplete="off"></label>
+    <label class="only-expense">Categoria<select name="category_id" ${isNew ? 'data-auto="1"' : ''}>
       <option value="">Sem categoria</option>
       ${S.categories.map((c) => `<option value="${c.id}" ${c.id === e.category_id ? 'selected' : ''}>${esc(c.emoji)} ${esc(c.name)}</option>`).join('')}
     </select></label>
     <label>Data e hora<input name="spent_at" type="datetime-local" required value="${toLocalInput(new Date(e.spent_at))}"></label>
-    <label>Cartão (opcional)<input name="card" value="${esc(e.card || '')}" autocomplete="off"></label>
+    <label class="only-expense">Cartão (opcional)<input name="card" value="${esc(e.card || '')}" autocomplete="off"></label>
     <label>Nota (opcional)<input name="note" value="${esc(e.note || '')}" autocomplete="off"></label>
     <div class="actions">
       <button type="button" class="btn" data-a="close">Cancelar</button>
       <button class="btn primary">Guardar</button>
     </div>
-    ${isNew ? '' : `<button type="button" class="btn danger" data-a="del-expense" data-id="${e.id}">Eliminar gasto</button>`}
+    ${isNew ? '' : `<button type="button" class="btn danger" data-a="del-expense" data-id="${e.id}">Eliminar registo</button>`}
   </form>`);
   if (isNew) $('.sheet input[name=amount]').focus();
 }
@@ -563,7 +605,7 @@ function armed(btn) {
   if (btn.dataset.armed) return true;
   btn.dataset.armed = '1';
   btn.textContent = 'Tocar de novo para confirmar';
-  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.a === 'del-expense' ? 'Eliminar gasto' : btn.dataset.a === 'del-category' ? 'Eliminar categoria' : 'Apagar dados locais'; } }, 4000);
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.a === 'del-expense' ? 'Eliminar registo' : btn.dataset.a === 'del-category' ? 'Eliminar categoria' : 'Apagar dados locais'; } }, 4000);
   return false;
 }
 
@@ -590,7 +632,7 @@ const actions = {
     if (!armed(t)) return;
     await store.deleteExpense(t.dataset.id);
     S.expenses = S.expenses.filter((e) => e.id !== t.dataset.id);
-    closeSheet(); render(); toast('Gasto eliminado');
+    closeSheet(); render(); toast('Registo eliminado');
   },
   async 'del-category'(t) {
     if (!armed(t)) return;
@@ -646,11 +688,13 @@ const forms = {
     if (!(amount >= 0)) throw new Error('Montante inválido');
     const when = new Date(data.get('spent_at'));
     if (Number.isNaN(when.getTime())) throw new Error('Data inválida');
+    const kind = data.get('kind') === 'income' ? 'income' : 'expense';
     const row = {
+      kind,
       amount,
       merchant: String(data.get('merchant')).trim(),
-      category_id: data.get('category_id') || null,
-      card: String(data.get('card')).trim() || null,
+      category_id: kind === 'income' ? null : data.get('category_id') || null,
+      card: kind === 'income' ? null : String(data.get('card')).trim() || null,
       note: String(data.get('note')).trim() || null,
       spent_at: when.toISOString(),
     };
@@ -658,7 +702,7 @@ const forms = {
     const saved = await store.saveExpense(row);
     S.expenses = [saved, ...S.expenses.filter((e) => e.id !== saved.id)].sort((a, b) => new Date(b.spent_at) - new Date(a.spent_at));
     if (!inMonth(saved, S.month) && when <= new Date()) S.month = firstOfMonth(when);
-    closeSheet(); render(); toast('Gasto guardado');
+    closeSheet(); render(); toast('Registo guardado');
   },
   async category(data, form) {
     const budgetText = String(data.get('budget')).trim();
@@ -702,7 +746,7 @@ document.addEventListener('change', (ev) => {
   if (t.name === 'category_id') delete t.dataset.auto; // escolhida à mão: não voltar a adivinhar
   if (t.name === 'merchant' && t.form?.dataset.f === 'expense') {
     const select = t.form.elements.category_id;
-    if (select.dataset.auto) select.value = guessCategory(t.value);
+    if (select.dataset.auto && t.form.elements.kind.value !== 'income') select.value = guessCategory(t.value);
   }
 });
 
