@@ -119,25 +119,25 @@ async function supabaseStore(c) {
     async expenses() {
       const out = [];
       for (let i = 0; ; i += 1000) {
-        const page = ok(await sb.from('expenses').select('*').order('spent_at', { ascending: false }).range(i, i + 999));
+        const page = ok(await sb.from('gastos_expenses').select('*').order('spent_at', { ascending: false }).range(i, i + 999));
         out.push(...page);
         if (page.length < 1000) break;
       }
       return out;
     },
-    async categories() { return ok(await sb.from('categories').select('*').order('position')); },
-    async saveExpense(row) { return save('expenses', row); },
-    async deleteExpense(id) { ok(await sb.from('expenses').delete().eq('id', id)); },
-    async saveCategory(row) { return save('categories', row); },
-    async addCategories(rows) { ok(await sb.from('categories').insert(rows)); },
-    async deleteCategory(id) { ok(await sb.from('categories').delete().eq('id', id)); },
+    async categories() { return ok(await sb.from('gastos_categories').select('*').order('position')); },
+    async saveExpense(row) { return save('gastos_expenses', row); },
+    async deleteExpense(id) { ok(await sb.from('gastos_expenses').delete().eq('id', id)); },
+    async saveCategory(row) { return save('gastos_categories', row); },
+    async addCategories(rows) { ok(await sb.from('gastos_categories').insert(rows)); },
+    async deleteCategory(id) { ok(await sb.from('gastos_categories').delete().eq('id', id)); },
     async token() {
-      const row = ok(await sb.from('ingest_tokens').select('token').maybeSingle());
+      const row = ok(await sb.from('gastos_ingest_tokens').select('token').maybeSingle());
       return row ? row.token : this.newToken();
     },
     async newToken() {
       const token = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, '0')).join('');
-      ok(await sb.from('ingest_tokens').upsert({ user_id: uid, token }));
+      ok(await sb.from('gastos_ingest_tokens').upsert({ user_id: uid, token }));
       return token;
     },
   };
@@ -452,7 +452,7 @@ const noBudgetRow = (c) => `<button class="row" data-a="cat-edit" data-id="${c.i
 
 function viewDefinicoes() {
   const supa = store.kind === 'supabase';
-  const endpoint = supa ? `${cfg.url}/rest/v1/rpc/ingest_expense` : '';
+  const endpoint = supa ? `${cfg.url}/rest/v1/rpc/gastos_ingest_expense` : '';
   const copyRow = (label, value) => `<div class="copy"><div><small>${label}</small><code>${esc(value)}</code></div><button class="btn small" data-a="copy" data-text="${esc(value)}">Copiar</button></div>`;
   return `
   <h2 class="sec">Categorias</h2>

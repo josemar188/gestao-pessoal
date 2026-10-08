@@ -19,9 +19,9 @@ Nenhuma chave fica no repositório: o URL e a chave do Supabase são introduzido
 
 ## 2. Criar a base de dados no Supabase
 
-1. Cria um projeto gratuito em [supabase.com](https://supabase.com).
+1. Cria um projeto gratuito em [supabase.com](https://supabase.com), ou usa um que já tenhas: tudo o que esta app cria tem o prefixo `gastos_`, por isso não toca nas tabelas de outras apps.
 2. **SQL Editor → New query**: cola o conteúdo de [`supabase/schema.sql`](supabase/schema.sql) e carrega em **Run**.
-3. **Authentication → URL Configuration → Site URL**: põe o endereço da app (o do passo 1), para o link de confirmação de email abrir no sítio certo.
+3. **Authentication → URL Configuration**: num projeto novo, põe o endereço da app (o do passo 1) em **Site URL**. Num projeto partilhado com outra app, não mexas no Site URL: acrescenta o endereço em **Redirect URLs**.
 4. **Project Settings → API**: copia o **Project URL** e a chave pública (**anon** ou **publishable**). Nunca uses a chave `service_role` / `secret`.
 5. Abre a app, cola o URL e a chave, e cria a tua conta (email + palavra-passe).
 
@@ -39,7 +39,7 @@ Na app, vai a **Definições → Apple Pay automático** e carrega em **Mostrar 
 2. Seleciona os cartões, deixa todas as categorias marcadas e escolhe **Executar imediatamente** → **Seguinte**.
 3. **Nova automação em branco** → adiciona a ação **Obter conteúdo do URL**.
 4. Preenche a ação:
-   - **URL**: `https://O-TEU-PROJETO.supabase.co/rest/v1/rpc/ingest_expense`
+   - **URL**: `https://O-TEU-PROJETO.supabase.co/rest/v1/rpc/gastos_ingest_expense`
    - **Método**: `POST`
    - **Cabeçalhos**: `apikey` = a tua chave pública
    - **Corpo do pedido**: `JSON`, com estes campos de texto:
@@ -69,6 +69,3 @@ supabase/schema.sql              tabelas, permissões e função que recebe os p
 ```
 
 A biblioteca `supabase-js` é carregada do CDN jsDelivr (versão fixa). Sem rede, a app abre mas não mostra dados.
-
-# gestao-pessoal
-
