@@ -243,3 +243,23 @@ small.bad { color: var(--bad); font-weight: 600; }
   opacity: 0; pointer-events: none; transition: .2s; max-width: calc(100vw - 32px);
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ── entradas ── */
+:root { --good: #14804f; }
+@media (prefers-color-scheme: dark) { :root { --good: #5fd6a0; } }
+.good, .amt.in b { color: var(--good); }
+.neg { color: var(--bad); }
+.flow { display: flex; gap: 28px; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, .22); }
+.flow span { display: grid; gap: 1px; }
+.flow small { color: rgba(255, 255, 255, .78); }
+.flow b { font: 600 18px/1.2 var(--display); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 16px; background: var(--soft); }
+.seg label { display: block; }
+.seg input { position: absolute; opacity: 0; }
+.seg span { display: block; text-align: center; padding: 11px 0; border-radius: 12px; font-size: 15px; font-weight: 600; color: var(--mute); }
+.seg input:checked + span { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+.seg input:focus-visible + span { outline: 2px solid var(--blue-2); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.only-income { display: none; }
+.form:has(input[name=kind][value=income]:checked) .only-expense { display: none; }
+.form:has(input[name=kind][value=income]:checked) .only-income { display: initial; }
