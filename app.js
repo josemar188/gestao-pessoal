@@ -337,7 +337,11 @@ function listHTML() {
   const yesterday = dayKey(new Date(Date.now() - 864e5));
   const groups = new Map();
   list.forEach((e) => { const k = dayKey(new Date(e.spent_at)); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); });
-  return [...groups].map(([k, items]) => {
+  const c = S.cat ? catById(S.cat) : null;
+  const filtered = S.cat || q
+    ? `<div class="card subtotal"><span><b>${c ? `${esc(c.emoji)} ${esc(c.name)}` : 'Resultados da pesquisa'}</b><small>${list.length} ${list.length === 1 ? 'registo' : 'registos'} em ${esc(monthName(S.month, { month: 'long' }))}</small></span><strong>${fmt(sum(list))}</strong></div>`
+    : '';
+  return filtered + [...groups].map(([k, items]) => {
     const d = new Date(items[0].spent_at);
     const label = k === today ? 'Hoje' : k === yesterday ? 'Ontem' : d.toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
     return `<section class="day">
