@@ -167,3 +167,8 @@ small.bad { color: var(--bad); font-weight: 600; }
   opacity: 0; pointer-events: none; transition: .2s; max-width: calc(100vw - 32px);
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* total do filtro ativo */
+.subtotal { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; }
+.subtotal span { display: grid; min-width: 0; }
+.subtotal strong { font-size: 22px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
