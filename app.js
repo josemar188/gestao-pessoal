@@ -283,10 +283,10 @@ function header() {
   let delta = '';
   if (prev > 0 && !isCurrent) {
     const pct = Math.round(((total - prev) / prev) * 100);
-    delta = ` · ${pct > 0 ? '+' : ''}${pct}% face a ${monthName(prevMonth, { month: 'long' })}`;
+    delta = `, ${pct > 0 ? '+' : ''}${pct}% face a ${monthName(prevMonth, { month: 'long' })}`;
   }
   return `
-  <header class="top">
+  <header class="top hero">
     <div class="month">
       <button data-a="month" data-n="-1" aria-label="Mês anterior">‹</button>
       <button data-a="month" data-n="0" class="name">${esc(monthName(S.month))}</button>
@@ -321,7 +321,7 @@ function viewGastos() {
   <input id="q" type="search" placeholder="Procurar comerciante ou nota" value="${esc(S.q)}" aria-label="Procurar">
   ${used.length > 1 ? `<div class="chips">
     <button data-a="chip" data-cat="" class="${S.cat ? '' : 'on'}">Todas</button>
-    ${used.map((c) => `<button data-a="chip" data-cat="${c.id}" class="${S.cat === c.id ? 'on' : ''}">${esc(c.emoji)} ${esc(c.name)}</button>`).join('')}
+    ${used.map((c) => `<button data-a="chip" data-cat="${c.id}" class="${S.cat === c.id ? 'on' : ''}"><i style="--c:${color(c.color)}"></i>${esc(c.name)}</button>`).join('')}
   </div>` : ''}
   <div id="list">${listHTML()}</div>`;
 }
@@ -337,7 +337,11 @@ function listHTML() {
   const yesterday = dayKey(new Date(Date.now() - 864e5));
   const groups = new Map();
   list.forEach((e) => { const k = dayKey(new Date(e.spent_at)); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); });
-  return [...groups].map(([k, items]) => {
+  const c = S.cat ? catById(S.cat) : null;
+  const filtered = S.cat || q
+    ? `<div class="card subtotal"><span><b>${c ? `${esc(c.emoji)} ${esc(c.name)}` : 'Resultados da pesquisa'}</b><small>${list.length} ${list.length === 1 ? 'registo' : 'registos'} em ${esc(monthName(S.month, { month: 'long' }))}</small></span><strong>${fmt(sum(list))}</strong></div>`
+    : '';
+  return filtered + [...groups].map(([k, items]) => {
     const d = new Date(items[0].spent_at);
     const label = k === today ? 'Hoje' : k === yesterday ? 'Ontem' : d.toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
     return `<section class="day">
@@ -350,11 +354,11 @@ function listHTML() {
 function rowHTML(e) {
   const c = catById(e.category_id);
   const time = new Date(e.spent_at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
-  const meta = [c ? c.name : 'Sem categoria', time].filter(Boolean).map(esc).join(' · ');
+  const meta = esc(c ? c.name : 'Sem categoria');
   return `<button class="row" data-a="edit" data-id="${e.id}">
-    <span class="dot" style="background:${color(c?.color)}22;color:${color(c?.color)}">${esc(c?.emoji || '❔')}</span>
+    <span class="dot" style="--c:${color(c?.color)}">${esc(c?.emoji || '❔')}</span>
     <span class="who"><b>${esc(e.merchant || 'Sem descrição')}</b><small><span>${meta}</span>${e.source === 'apple_pay' ? '<i class="tag">Apple Pay</i>' : ''}</small></span>
-    <span class="amt">${fmt(e.amount)}</span>
+    <span class="amt"><b>${fmt(e.amount)}</b><small>${time}</small></span>
   </button>`;
 }
 
@@ -445,7 +449,7 @@ function viewOrcamentos() {
 }
 
 const noBudgetRow = (c) => `<button class="row" data-a="cat-edit" data-id="${c.id}">
-  <span class="dot" style="background:${color(c.color)}22">${esc(c.emoji)}</span>
+  <span class="dot" style="--c:${color(c.color)}">${esc(c.emoji)}</span>
   <span class="who"><b>${esc(c.name)}</b></span><span class="link">Definir</span></button>`;
 
 /* ── Definições ── */
@@ -458,7 +462,7 @@ function viewDefinicoes() {
   <h2 class="sec">Categorias</h2>
   <section class="card rows">
     ${S.categories.map((c) => `<button class="row" data-a="cat-edit" data-id="${c.id}">
-      <span class="dot" style="background:${color(c.color)}22">${esc(c.emoji)}</span>
+      <span class="dot" style="--c:${color(c.color)}">${esc(c.emoji)}</span>
       <span class="who"><b>${esc(c.name)}</b><small><span>${Number(c.budget) > 0 ? `Orçamento ${fmt(c.budget)}/mês` : 'Sem orçamento'}</span></small></span><span class="link">Editar</span></button>`).join('')}
     <button class="row add" data-a="cat-add">+ Nova categoria</button>
   </section>
