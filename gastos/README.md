@@ -69,6 +69,3 @@ supabase/schema.sql              tabelas, permissões e função que recebe os p
 ```
 
 A biblioteca `supabase-js` é carregada do CDN jsDelivr (versão fixa). Sem rede, a app abre mas não mostra dados.
-
-# gestao-pessoal
-
