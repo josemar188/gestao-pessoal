@@ -21,7 +21,7 @@ const daysIn = (m) => new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
 const monthName = (m, o = { month: 'long', year: 'numeric' }) => m.toLocaleDateString('pt-PT', o);
 const toLocalInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const parseAmount = (s) => { const n = Number(String(s).replace(/\s|€/g, '').replace(',', '.')); return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN; };
+const parseAmount = (s) => { const n = Number(String(s).replace(/\s|€/g, '').replace('−', '-').replace(',', '.')); return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN; };
 
 const PALETTE = ['#2f7d5b', '#c2603a', '#3a6ea5', '#8a6d3b', '#b0487a', '#7257b5', '#c99326', '#6b7772'];
 const DEFAULT_CATEGORIES = [
@@ -37,7 +37,7 @@ const DEFAULT_CATEGORIES = [
 
 /* ───────────────────────── estado ───────────────────────── */
 
-const S = { tab: 'gastos', month: firstOfMonth(new Date()), expenses: [], categories: [], q: '', cat: '', user: null, token: null, loadedAt: 0 };
+const S = { tab: 'gastos', month: firstOfMonth(new Date()), expenses: [], categories: [], balances: {}, balancesReady: true, q: '', cat: '', user: null, token: null, loadedAt: 0 };
 let cfg = null;
 let store = null;
 
@@ -46,6 +46,19 @@ const isIncome = (e) => e.kind === 'income';
 const monthAll = (m = S.month) => S.expenses.filter((e) => inMonth(e, m));
 const monthExpenses = (m = S.month) => monthAll(m).filter((e) => !isIncome(e));
 const monthIncome = (m = S.month) => monthAll(m).filter(isIncome);
+const monthId = (m = S.month) => `${m.getFullYear()}-${pad(m.getMonth() + 1)}`;
+// Saldo do mês: o calculado pelos registos, o real (se foi acertado à mão) e a diferença sem registo.
+function monthBalance(m = S.month) {
+  const income = sum(monthIncome(m));
+  const spent = sum(monthExpenses(m));
+  const computed = Math.round((income - spent) * 100) / 100;
+  const real = S.balances[monthId(m)];
+  const set = real !== undefined && real !== null;
+  const gap = set ? Math.round((computed - Number(real)) * 100) / 100 : 0; // > 0: gastos sem registo; < 0: entradas sem registo
+  return { income, spent, computed, set, real: set ? Number(real) : computed, gap };
+}
+const gapLabel = (gap) => (gap > 0 ? 'Gastos sem registo' : 'Entradas sem registo');
+const gapValue = (gap) => `${gap > 0 ? '−' : '+'}${fmt(Math.abs(gap))}`;
 // Total a mostrar para um conjunto misto: gastos, ou entradas se só houver entradas.
 const mixedTotal = (items) => {
   const out = sum(items.filter((e) => !isIncome(e)));
@@ -94,6 +107,12 @@ function localStore() {
       db.expenses.forEach((e) => { if (e.category_id === id) e.category_id = null; });
       save();
     },
+    async balances() { return { ...(db.balances || {}) }; },
+    async saveBalance(month, amount) {
+      db.balances = db.balances || {};
+      if (amount === null) delete db.balances[month]; else db.balances[month] = amount;
+      save();
+    },
     clear() { localStorage.removeItem(LOCAL_KEY); },
   };
 }
@@ -140,6 +159,17 @@ async function supabaseStore(c) {
     async saveCategory(row) { return save('gastos_categories', row); },
     async addCategories(rows) { ok(await sb.from('gastos_categories').insert(rows)); },
     async deleteCategory(id) { ok(await sb.from('gastos_categories').delete().eq('id', id)); },
+    // Devolve null se a tabela ainda não existir (falta correr supabase/migracao-saldo.sql).
+    async balances() {
+      const { data, error } = await sb.from('gastos_balances').select('month, amount');
+      if (error) return null;
+      return Object.fromEntries(data.map((r) => [r.month, Number(r.amount)]));
+    },
+    async saveBalance(month, amount) {
+      ok(amount === null
+        ? await sb.from('gastos_balances').delete().eq('month', month)
+        : await sb.from('gastos_balances').upsert({ user_id: uid, month, amount, updated_at: new Date().toISOString() }));
+    },
     async token() {
       const row = ok(await sb.from('gastos_ingest_tokens').select('token').maybeSingle());
       return row ? row.token : this.newToken();
@@ -203,7 +233,10 @@ async function boot() {
 }
 
 async function loadAll() {
-  [S.categories, S.expenses] = await Promise.all([store.categories(), store.expenses()]);
+  let balances;
+  [S.categories, S.expenses, balances] = await Promise.all([store.categories(), store.expenses(), store.balances()]);
+  S.balancesReady = balances !== null;
+  S.balances = balances || {};
   if (!S.categories.length) {
     await store.addCategories(DEFAULT_CATEGORIES);
     S.categories = await store.categories();
@@ -288,6 +321,7 @@ function header() {
   const list = monthExpenses();
   const total = sum(list);
   const income = sum(monthIncome());
+  const bal = monthBalance();
   const prevMonth = addMonths(S.month, -1);
   const prev = sum(monthExpenses(prevMonth));
   const isCurrent = S.month.getTime() === firstOfMonth(new Date()).getTime();
@@ -306,9 +340,10 @@ function header() {
     </div>
     <div class="total">${fmt(total)}</div>
     <div class="sub">${list.length} ${list.length === 1 ? 'gasto' : 'gastos'}${delta}</div>
-    ${income > 0 ? `<div class="flow">
+    ${income > 0 || bal.set ? `<div class="flow">
       <span><small>Entradas</small><b>+${fmt(income)}</b></span>
-      <span><small>Saldo</small><b>${fmt(income - total)}</b></span>
+      <button data-a="balance" aria-label="Acertar saldo"><small>${bal.set ? 'Saldo real' : 'Saldo'} ✎</small><b>${fmt(bal.real)}</b></button>
+      ${bal.gap ? `<span><small>${gapLabel(bal.gap)}</small><b>${gapValue(bal.gap)}</b></span>` : ''}
     </div>` : ''}
   </header>`;
 }
@@ -404,16 +439,21 @@ function viewResumo() {
   const total = sum(list);
   const income = sum(monthIncome());
   const usedPct = income > 0 ? total / income : 0;
-  const balance = income > 0 ? `
+  const bal = monthBalance();
+  const balance = `
   <section class="card block">
     <h2>Balanço do mês</h2>
     <div class="hl"><span>Entradas</span><b class="good">+${fmt(income)}</b></div>
     <div class="hl"><span>Gastos</span><b>${fmt(total)}</b></div>
-    <div class="track big ${usedPct > 1 ? 'bad' : usedPct >= 0.9 ? 'warn' : ''}"><i style="width:${Math.min(usedPct * 100, 100).toFixed(1)}%"></i></div>
-    <div class="hl"><span>Saldo</span><b class="${income - total < 0 ? 'neg' : ''}">${fmt(income - total)}</b></div>
-    <small>${usedPct > 1 ? `Gastaste mais ${fmt(total - income)} do que entrou.` : `Gastaste ${Math.round(usedPct * 100)}% do que entrou.`}</small>
-  </section>` : '';
-  if (!list.length) return balance || '<div class="empty"><p>Sem gastos neste mês para resumir.</p></div>';
+    ${income > 0 ? `<div class="track big ${usedPct > 1 ? 'bad' : usedPct >= 0.9 ? 'warn' : ''}"><i style="width:${Math.min(usedPct * 100, 100).toFixed(1)}%"></i></div>` : ''}
+    <div class="hl"><span>${bal.set ? 'Saldo pelos registos' : 'Saldo'}</span><b class="${bal.computed < 0 ? 'neg' : ''}">${fmt(bal.computed)}</b></div>
+    ${bal.set ? `<div class="hl"><span>Saldo real</span><b class="${bal.real < 0 ? 'neg' : ''}">${fmt(bal.real)}</b></div>` : ''}
+    ${bal.gap ? `<div class="gap"><span><b>${gapLabel(bal.gap)}</b><small>${bal.gap > 0 ? 'Saiu dinheiro que não está na lista.' : 'Entrou dinheiro que não está na lista.'}</small></span><strong>${gapValue(bal.gap)}</strong></div>` : ''}
+    ${bal.set && !bal.gap ? '<small>O saldo real bate certo com os registos.</small>' : ''}
+    ${income > 0 && !bal.set ? `<small>${usedPct > 1 ? `Gastaste mais ${fmt(total - income)} do que entrou.` : `Gastaste ${Math.round(usedPct * 100)}% do que entrou.`}</small>` : ''}
+    <button class="btn" data-a="balance">${bal.set ? 'Alterar saldo real' : 'Acertar saldo'}</button>
+  </section>`;
+  if (!list.length) return balance;
   const now = new Date();
   const isCurrent = inMonth({ spent_at: now }, S.month);
   const days = isCurrent ? now.getDate() : daysIn(S.month);
@@ -565,6 +605,24 @@ function expenseSheet(e) {
   if (isNew) $('.sheet input[name=amount]').focus();
 }
 
+function balanceSheet() {
+  const bal = monthBalance();
+  const month = monthName(S.month, { month: 'long' });
+  openSheet(`
+  <form data-f="balance" class="form">
+    <h2>Saldo real de ${esc(month)}</h2>
+    <p class="hint">Escreve o saldo que tens de facto. Se for diferente do que os registos dão (${fmt(bal.computed)}), a diferença fica declarada como "sem registo".</p>
+    <label class="amount">Saldo real (€)<input name="amount" inputmode="decimal" required placeholder="0,00" value="${esc(String(bal.real.toFixed(2)).replace('.', ','))}" autocomplete="off"></label>
+    <div class="actions">
+      <button type="button" class="btn" data-a="close">Cancelar</button>
+      <button class="btn primary">Guardar</button>
+    </div>
+    ${bal.set ? '<button type="button" class="btn" data-a="balance-clear">Voltar ao saldo calculado</button>' : ''}
+  </form>`);
+  const input = $('.sheet input[name=amount]');
+  input.focus(); input.select();
+}
+
 function categorySheet(c) {
   const isNew = !c;
   c = c || { name: '', emoji: '📦', color: PALETTE[S.categories.length % PALETTE.length], budget: '', keywords: [] };
@@ -623,6 +681,15 @@ const actions = {
   edit(t) { expenseSheet(S.expenses.find((e) => e.id === t.dataset.id)); },
   close() { closeSheet(); },
   'cat-add'() { categorySheet(); },
+  balance() {
+    if (!S.balancesReady) throw new Error('Falta correr o ficheiro migracao-saldo.sql no Supabase.');
+    balanceSheet();
+  },
+  async 'balance-clear'() {
+    await store.saveBalance(monthId(), null);
+    delete S.balances[monthId()];
+    closeSheet(); render(); toast('Saldo calculado reposto');
+  },
   'cat-edit'(t) { categorySheet(catById(t.dataset.id)); },
   tip(t) { const p = t.closest('.cols').nextElementSibling; p.textContent = t.dataset.tip; p.classList.add('on'); },
   async copy(t) {
@@ -703,6 +770,13 @@ const forms = {
     S.expenses = [saved, ...S.expenses.filter((e) => e.id !== saved.id)].sort((a, b) => new Date(b.spent_at) - new Date(a.spent_at));
     if (!inMonth(saved, S.month) && when <= new Date()) S.month = firstOfMonth(when);
     closeSheet(); render(); toast('Registo guardado');
+  },
+  async balance(data) {
+    const amount = parseAmount(data.get('amount'));
+    if (!Number.isFinite(amount)) throw new Error('Saldo inválido');
+    await store.saveBalance(monthId(), amount);
+    S.balances[monthId()] = amount;
+    closeSheet(); render(); toast('Saldo guardado');
   },
   async category(data, form) {
     const budgetText = String(data.get('budget')).trim();
