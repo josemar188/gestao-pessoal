@@ -23,7 +23,8 @@ const toLocalInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
 const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parseAmount = (s) => { const n = Number(String(s).replace(/\s|€/g, '').replace('−', '-').replace(',', '.')); return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN; };
 
-const CARD_COLORS = ['#1f47b8', '#0f766e', '#7c3aed', '#b4234a', '#b45309', '#1f2937'];
+const CARD_COLORS = ['#1f47b8', '#0f766e', '#7c3aed', '#b4234a', '#b45309', '#1f2937', '#15803d'];
+const isCash = (c) => c?.type === 'cash';
 const PALETTE = ['#2f7d5b', '#c2603a', '#3a6ea5', '#8a6d3b', '#b0487a', '#7257b5', '#c99326', '#6b7772'];
 const DEFAULT_CATEGORIES = [
   { name: 'Supermercado', emoji: '🛒', color: PALETTE[0], keywords: ['continente', 'pingo doce', 'lidl', 'aldi', 'auchan', 'mercadona', 'minipreço', 'minipreco', 'intermarché', 'intermarche'] },
@@ -38,7 +39,7 @@ const DEFAULT_CATEGORIES = [
 
 /* ───────────────────────── estado ───────────────────────── */
 
-const S = { tab: 'gastos', month: firstOfMonth(new Date()), expenses: [], categories: [], balances: {}, balancesReady: true, cards: [], cardsReady: true, deckX: 0, deckCard: '', q: '', cat: '', user: null, token: null, loadedAt: 0 };
+const S = { tab: 'gastos', month: firstOfMonth(new Date()), expenses: [], categories: [], balances: {}, balancesReady: true, cards: [], cardsReady: true, deckX: 0, deckCard: '', limit: 20, q: '', cat: '', user: null, token: null, loadedAt: 0 };
 let cfg = null;
 let store = null;
 
@@ -176,7 +177,12 @@ async function supabaseStore(c) {
       const { data, error } = await sb.from('gastos_cards').select('*').order('position');
       return error ? null : data;
     },
-    async saveCard(row) { return save('gastos_cards', row); },
+    async saveCard(row) {
+      try { return await save('gastos_cards', row); } catch (err) {
+        if (/'type'|\btype\b.*column|column.*\btype\b/i.test(err.message)) throw new Error('Falta correr o ficheiro migracao-dinheiro.sql no Supabase.');
+        throw err;
+      }
+    },
     async deleteCard(id) { ok(await sb.from('gastos_cards').delete().eq('id', id)); },
     // Devolve null se a tabela ainda não existir (falta correr supabase/migracao-saldo.sql).
     async balances() {
@@ -345,14 +351,14 @@ function deck() {
   if (!S.cardsReady) return header();
   const slides = S.cards.map((c) => {
     const net = cardNet(c.id, S.month);
-    return `<button class="paycard" data-a="card-edit" data-id="${c.id}" style="--c:${color(c.color)}">
+    return `<button class="paycard ${isCash(c) ? 'cash' : ''}" data-a="card-edit" data-id="${c.id}" style="--c:${color(c.color)}">
       <span class="pc-top"><b>${esc(c.name)}</b><i aria-hidden="true"></i></span>
-      <span class="pc-bal"><small>Saldo</small><strong>${fmt(cardBalance(c))}</strong></span>
+      <span class="pc-bal"><small>${isCash(c) ? 'Em dinheiro' : 'Saldo'}</small><strong>${fmt(cardBalance(c))}</strong></span>
       <span class="pc-foot">${net ? `${net > 0 ? '+' : '−'}${fmt(Math.abs(net))} em ${esc(monthName(S.month, { month: 'long' }))}` : `Sem movimentos em ${esc(monthName(S.month, { month: 'long' }))}`}</span>
     </button>`;
   }).join('');
   return `<div class="deck" id="deck">${header()}${slides}
-    <button class="paycard add" data-a="card-add"><strong>+</strong><span>Adicionar cartão</span></button>
+    <button class="paycard add" data-a="card-add"><strong>+</strong><span>Adicionar cartão ou dinheiro</span></button>
   </div>`;
 }
 
@@ -423,7 +429,8 @@ function listHTML() {
   const list = monthAll().filter((e) => inCat(e) && (!S.deckCard || e.card_id === S.deckCard) && (!q || norm(e.merchant).includes(q) || norm(e.note).includes(q)));
   if (!list.length) {
     return `<div class="empty"><p>${S.deckCard && !S.q && !S.cat ? `Sem registos com ${esc(cardById(S.deckCard)?.name || 'este cartão')} neste mês.` : S.q || S.cat ? 'Nenhum registo corresponde ao filtro.' : 'Ainda não há registos neste mês.'}</p>
-      <button class="btn primary" data-a="add">Adicionar registo</button></div>`;
+      <button class="btn primary" data-a="add">Adicionar registo</button>
+      ${S.deckCard ? '<button class="btn" data-a="link-open">Ligar registos já feitos</button>' : ''}</div>`;
   }
   const today = dayKey(new Date());
   const yesterday = dayKey(new Date(Date.now() - 864e5));
@@ -435,14 +442,27 @@ function listHTML() {
   const filtered = S.cat || q || pc
     ? `<div class="card subtotal"><span><b>${what}</b><small>${list.length} ${list.length === 1 ? 'registo' : 'registos'} em ${esc(monthName(S.month, { month: 'long' }))}</small></span><strong>${mixedTotal(list)}</strong></div>`
     : '';
-  return filtered + [...groups].map(([k, items]) => {
+  // Mostra S.limit registos de cada vez; o total de cada dia conta sempre o dia inteiro.
+  let room = S.limit;
+  const shown = [...groups].filter(([, items]) => { const fits = room > 0; room -= items.length; return fits; });
+  room = S.limit;
+  const rest = list.length - Math.min(list.length, S.limit);
+  const foot = `
+    ${rest > 0 ? `<button class="btn more" data-a="more">Mostrar mais ${Math.min(rest, 20)} <small>de ${rest} por ver</small></button>` : ''}
+    <div class="listfoot">
+      <button data-a="add"><b>+</b>Adicionar registo</button>
+      ${S.deckCard ? '<button data-a="link-open"><b>⇄</b>Ligar registos já feitos</button>' : ''}
+    </div>`;
+  return filtered + shown.map(([k, all]) => {
+    const items = all.slice(0, Math.max(room, 0));
+    room -= all.length;
     const d = new Date(items[0].spent_at);
     const label = k === today ? 'Hoje' : k === yesterday ? 'Ontem' : d.toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
     return `<section class="day">
-      <h2><span>${esc(label)}</span><span>${mixedTotal(items)}</span></h2>
+      <h2><span>${esc(label)}</span><span>${mixedTotal(all)}</span></h2>
       <div class="card rows">${items.map(rowHTML).join('')}</div>
     </section>`;
-  }).join('');
+  }).join('') + foot;
 }
 
 function rowHTML(e) {
@@ -496,7 +516,7 @@ function viewResumo() {
     <button class="btn" data-a="balance">${bal.set ? 'Alterar saldo real' : 'Acertar saldo'}</button>
     ${S.cards.length ? `<div class="cardlist">
       ${S.cards.map((c) => `<button class="hl" data-a="card-edit" data-id="${c.id}"><span><i style="--c:${color(c.color)}"></i>${esc(c.name)}</span><b class="${cardBalance(c) < 0 ? 'neg' : ''}">${fmt(cardBalance(c))}</b></button>`).join('')}
-      ${S.cards.length > 1 ? `<div class="hl sum"><span>Total nos cartões</span><b>${fmt(S.cards.reduce((t, c) => t + cardBalance(c), 0))}</b></div>` : ''}
+      ${S.cards.length > 1 ? `<div class="hl sum"><span>Total disponível</span><b>${fmt(S.cards.reduce((t, c) => t + cardBalance(c), 0))}</b></div>` : ''}
     </div>` : ''}
   </section>`;
   if (!list.length) return balance;
@@ -582,12 +602,12 @@ function viewDefinicoes() {
   const endpoint = supa ? `${cfg.url}/rest/v1/rpc/gastos_ingest_expense` : '';
   const copyRow = (label, value) => `<div class="copy"><div><small>${label}</small><code>${esc(value)}</code></div><button class="btn small" data-a="copy" data-text="${esc(value)}">Copiar</button></div>`;
   return `
-  ${S.cardsReady ? `<h2 class="sec">Cartões</h2>
+  ${S.cardsReady ? `<h2 class="sec">Cartões e dinheiro</h2>
   <section class="card rows">
     ${S.cards.map((c) => `<button class="row" data-a="card-edit" data-id="${c.id}">
-      <span class="dot" style="--c:${color(c.color)}">💳</span>
+      <span class="dot" style="--c:${color(c.color)}">${isCash(c) ? '🪙' : '💳'}</span>
       <span class="who"><b>${esc(c.name)}</b><small><span>Saldo ${fmt(cardBalance(c))}</span></small></span><span class="link">Editar</span></button>`).join('')}
-    <button class="row add" data-a="card-add">+ Novo cartão</button>
+    <button class="row add" data-a="card-add">+ Novo cartão ou dinheiro</button>
   </section>` : ''}
 
   <h2 class="sec">Categorias</h2>
@@ -648,8 +668,8 @@ function expenseSheet(e) {
       ${S.categories.map((c) => `<option value="${c.id}" ${c.id === e.category_id ? 'selected' : ''}>${esc(c.emoji)} ${esc(c.name)}</option>`).join('')}
     </select></label>
     <label>Data e hora<input name="spent_at" type="datetime-local" required value="${toLocalInput(new Date(e.spent_at))}"></label>
-    ${S.cards.length ? `<label>Cartão<select name="card_id">
-      <option value="">Sem cartão</option>
+    ${S.cards.length ? `<label>Pago com<select name="card_id">
+      <option value="">Sem cartão nem dinheiro</option>
       ${S.cards.map((c) => `<option value="${c.id}" ${c.id === e.card_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
     </select></label>` : ''}
     ${e.card ? `<p class="hint only-expense">Pago com: ${esc(e.card)}</p>` : ''}
@@ -669,21 +689,59 @@ function cardSheet(c) {
   const linked = isNew ? 0 : S.expenses.filter((e) => e.card_id === c.id).length;
   openSheet(`
   <form data-f="card" class="form" data-id="${c.id || ''}">
-    <h2>${isNew ? 'Novo cartão' : 'Editar cartão'}</h2>
-    <label>Nome<input name="name" required value="${esc(c.name)}" placeholder="Santander" autocomplete="off"></label>
-    <label class="amount">Saldo atual (€)<input name="balance" inputmode="decimal" required placeholder="0,00" value="${isNew ? '' : esc(String(cardBalance(c).toFixed(2)).replace('.', ','))}" autocomplete="off"></label>
-    <p class="hint">${isNew ? 'Daqui em diante, cada gasto ligado a este cartão desconta deste saldo e cada entrada soma.' : `${linked} ${linked === 1 ? 'registo ligado' : 'registos ligados'}. Se alterares o saldo aqui, ele passa a contar a partir do novo valor.`}</p>
+    <h2>${isNew ? 'Novo' : 'Editar'} <span class="only-card">cartão</span><span class="only-cash">dinheiro</span></h2>
+    <fieldset class="seg"><legend class="sr">Tipo</legend>
+      <label><input type="radio" name="type" value="card" ${isCash(c) ? '' : 'checked'}><span>Cartão</span></label>
+      <label><input type="radio" name="type" value="cash" ${isCash(c) ? 'checked' : ''}><span>Dinheiro</span></label>
+    </fieldset>
+    <label>Nome<input name="name" required value="${esc(c.name)}" placeholder="Santander, Carteira, Mealheiro…" autocomplete="off"></label>
+    <label class="amount"><span class="only-card">Saldo atual (€)</span><span class="only-cash">Dinheiro que tens agora (€)</span><input name="balance" inputmode="decimal" required placeholder="0,00" value="${isNew ? '' : esc(String(cardBalance(c).toFixed(2)).replace('.', ','))}" autocomplete="off"></label>
+    <p class="hint">${isNew ? 'Daqui em diante, cada gasto pago com ele desconta deste valor e cada entrada soma.' : `${linked} ${linked === 1 ? 'registo ligado' : 'registos ligados'}. Se alterares o saldo aqui, ele passa a contar a partir do novo valor.`}</p>
     <fieldset><legend>Cor</legend><div class="swatches">
       ${CARD_COLORS.map((p) => `<label><input type="radio" name="color" value="${p}" ${p === c.color ? 'checked' : ''}><span style="background:${p}"></span></label>`).join('')}
     </div></fieldset>
-    <label>Nome na Carteira do iPhone (opcional)<input name="wallet_match" value="${esc(c.wallet_match || '')}" placeholder="Igual ao nome, se ficar vazio" autocomplete="off"></label>
-    <p class="hint">Os pagamentos Apple Pay cujo cartão contenha este texto ficam ligados aqui sozinhos.</p>
+    <label class="only-card">Nome na Carteira do iPhone (opcional)<input name="wallet_match" value="${esc(c.wallet_match || '')}" placeholder="Igual ao nome, se ficar vazio" autocomplete="off"></label>
+    <p class="hint only-card">Os pagamentos Apple Pay cujo cartão contenha este texto ficam ligados aqui sozinhos.</p>
     <div class="actions">
       <button type="button" class="btn" data-a="close">Cancelar</button>
       <button class="btn primary">Guardar</button>
     </div>
-    ${isNew ? '' : `<button type="button" class="btn danger" data-a="del-card" data-id="${c.id}">Eliminar cartão</button>`}
+    ${isNew ? '' : `<button type="button" class="btn danger" data-a="del-card" data-id="${c.id}">Eliminar</button>`}
   </form>`);
+}
+
+// Ligar a um cartão (ou ao dinheiro) registos que já existem, escolhendo-os numa lista.
+function linkSheet(card) {
+  if (!card) return;
+  const items = monthAll().filter((e) => e.card_id !== card.id);
+  const month = monthName(S.month, { month: 'long' });
+  openSheet(`
+  <form data-f="link" class="form" data-id="${card.id}">
+    <h2>Ligar registos a ${esc(card.name)}</h2>
+    ${items.length ? `
+    <p class="hint">Registos de ${esc(month)} que ainda não estão em ${esc(card.name)}.</p>
+    <button type="button" class="btn small" data-a="link-all">Selecionar todos</button>
+    <div class="pick">${items.map((e) => {
+      const other = cardById(e.card_id);
+      const d = new Date(e.spent_at);
+      return `<label><input type="checkbox" name="ids" value="${e.id}"><span class="box" aria-hidden="true"></span>
+        <span class="who"><b>${esc(e.merchant || 'Sem descrição')}</b><small><span>${d.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}${other ? `, agora em ${esc(other.name)}` : ''}</span></small></span>
+        <span class="amt ${isIncome(e) ? 'in' : ''}"><b>${isIncome(e) ? '+' : ''}${fmt(e.amount)}</b></span></label>`;
+    }).join('')}</div>
+    <label class="check"><input type="checkbox" name="discount"><span class="box" aria-hidden="true"></span><span>Descontar estes registos do saldo<small>Deixa desligado se o saldo de ${esc(card.name)} já os inclui.</small></span></label>
+    <div class="actions">
+      <button type="button" class="btn" data-a="close">Cancelar</button>
+      <button class="btn primary" id="link-go" disabled>Ligar</button>
+    </div>` : `
+    <p class="hint">Não há registos de ${esc(month)} por ligar a ${esc(card.name)}.</p>
+    <button type="button" class="btn" data-a="close">Fechar</button>`}
+  </form>`);
+}
+function linkCount(form) {
+  const n = form.querySelectorAll('input[name=ids]:checked').length;
+  const go = $('#link-go');
+  go.disabled = !n;
+  go.textContent = n ? `Ligar ${n} ${n === 1 ? 'registo' : 'registos'}` : 'Ligar';
 }
 
 function balanceSheet() {
@@ -744,20 +802,24 @@ function armed(btn) {
   if (btn.dataset.armed) return true;
   btn.dataset.armed = '1';
   btn.textContent = 'Tocar de novo para confirmar';
-  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.a === 'del-expense' ? 'Eliminar registo' : btn.dataset.a === 'del-card' ? 'Eliminar cartão' : btn.dataset.a === 'del-category' ? 'Eliminar categoria' : 'Apagar dados locais'; } }, 4000);
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.a === 'del-expense' ? 'Eliminar registo' : btn.dataset.a === 'del-card' ? 'Eliminar' : btn.dataset.a === 'del-category' ? 'Eliminar categoria' : 'Apagar dados locais'; } }, 4000);
   return false;
 }
 
 const actions = {
-  tab(t) { S.tab = t.dataset.tab; render(); scrollTo(0, 0); },
+  tab(t) { S.tab = t.dataset.tab; S.limit = 20; render(); scrollTo(0, 0); },
   month(t) {
     const n = Number(t.dataset.n);
     const next = n === 0 ? firstOfMonth(new Date()) : addMonths(S.month, n);
     if (next > firstOfMonth(new Date())) return;
+    S.limit = 20;
     S.month = next; S.cat = ''; render();
   },
   refresh() { return refresh(); },
-  chip(t) { S.cat = t.dataset.cat; render(); },
+  chip(t) { S.cat = t.dataset.cat; S.limit = 20; render(); },
+  more() { S.limit += 20; $('#list').innerHTML = listHTML(); },
+  'link-open'() { linkSheet(cardById(S.deckCard)); },
+  'link-all'(t) { const boxes = [...t.form.querySelectorAll('input[name=ids]')]; const on = boxes.some((b) => !b.checked); boxes.forEach((b) => { b.checked = on; }); linkCount(t.form); },
   add() { expenseSheet(); },
   edit(t) { expenseSheet(S.expenses.find((e) => e.id === t.dataset.id)); },
   close() { closeSheet(); },
@@ -769,7 +831,7 @@ const actions = {
     await store.deleteCard(t.dataset.id);
     S.deckCard = ''; S.deckX = 0;
     await loadAll();
-    closeSheet(); render(); toast('Cartão eliminado');
+    closeSheet(); render(); toast('Eliminado');
   },
   balance() {
     if (!S.balancesReady) throw new Error('Falta correr o ficheiro migracao-saldo.sql no Supabase.');
@@ -813,6 +875,7 @@ const actions = {
       await s.addCategories(DEFAULT_CATEGORIES.map((c) => ({ ...c, budget: { Supermercado: 350, Restaurantes: 150, Transportes: 120 }[c.name] || null })));
       const main = await s.saveCard({ name: 'Santander', color: CARD_COLORS[3], initial_balance: 0, position: 0, wallet_match: null });
       await s.saveCard({ name: 'Revolut', color: CARD_COLORS[5], initial_balance: 240, position: 1, wallet_match: null });
+      await s.saveCard({ name: 'Dinheiro', type: 'cash', color: CARD_COLORS[6], initial_balance: 85, position: 2, wallet_match: null });
       for (const e of demoData(await s.categories())) await s.saveExpense({ ...e, card_id: e.kind === 'income' || e.source === 'apple_pay' ? main.id : null });
     }
     await boot();
@@ -869,7 +932,8 @@ const forms = {
     const id = form.dataset.id;
     const row = {
       name: String(data.get('name')).trim(),
-      wallet_match: String(data.get('wallet_match')).trim() || null,
+      type: data.get('type') === 'cash' ? 'cash' : 'card',
+      wallet_match: data.get('type') === 'cash' ? null : String(data.get('wallet_match')).trim() || null,
       color: color(data.get('color')),
       // o saldo é sempre: saldo inicial + movimentos ligados; por isso guarda-se o inicial que dá o saldo pedido
       initial_balance: Math.round((balance - (id ? cardNet(id) : 0)) * 100) / 100,
@@ -877,7 +941,21 @@ const forms = {
     if (id) row.id = id; else row.position = S.cards.length;
     await store.saveCard(row);
     S.cards = await store.cards();
-    closeSheet(); render(); toast('Cartão guardado');
+    closeSheet(); render(); toast('Guardado');
+  },
+  async link(data, form) {
+    const card = cardById(form.dataset.id);
+    const ids = data.getAll('ids');
+    if (!card || !ids.length) return;
+    const picked = S.expenses.filter((e) => ids.includes(e.id));
+    await Promise.all(picked.map((e) => store.saveExpense({ id: e.id, card_id: card.id })));
+    if (!data.get('discount')) {
+      // o saldo escrito à mão já incluía estes registos: compensa-se para ele não mexer
+      const net = picked.reduce((t, e) => t + (isIncome(e) ? 1 : -1) * Number(e.amount || 0), 0);
+      await store.saveCard({ id: card.id, initial_balance: Math.round((Number(card.initial_balance || 0) - net) * 100) / 100 });
+    }
+    await loadAll();
+    closeSheet(); render(); toast(`${picked.length} ${picked.length === 1 ? 'registo ligado' : 'registos ligados'}`);
   },
   async balance(data) {
     const amount = parseAmount(data.get('amount'));
@@ -920,11 +998,17 @@ document.addEventListener('submit', (ev) => {
 });
 
 document.addEventListener('input', (ev) => {
-  if (ev.target.id === 'q') { S.q = ev.target.value; $('#list').innerHTML = listHTML(); }
+  if (ev.target.id === 'q') { S.q = ev.target.value; S.limit = 20; $('#list').innerHTML = listHTML(); }
 });
 
 document.addEventListener('change', (ev) => {
   const t = ev.target;
+  if (t.name === 'ids') linkCount(t.form);
+  if (t.name === 'type' && t.form?.dataset.f === 'card') {
+    const name = t.form.elements.name;
+    if (t.value === 'cash' && !name.value.trim()) name.value = 'Dinheiro';
+    if (t.value === 'card' && name.value === 'Dinheiro') name.value = '';
+  }
   if (t.name === 'category_id') delete t.dataset.auto; // escolhida à mão: não voltar a adivinhar
   if (t.name === 'merchant' && t.form?.dataset.f === 'expense') {
     const select = t.form.elements.category_id;
@@ -943,6 +1027,7 @@ document.addEventListener('scroll', (ev) => {
   const id = card ? card.id : '';
   if (id === S.deckCard) return;
   S.deckCard = id;
+  S.limit = 20;
   const list = $('#list');
   if (list) list.innerHTML = listHTML();
 }, true);
