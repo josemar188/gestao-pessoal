@@ -1,5 +1,5 @@
 // Guarda a "casca" da app para abrir depressa e sem rede. Os dados vêm sempre do Supabase.
-const CACHE = 'gastos-v4';
+const CACHE = 'gastos-v6';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
