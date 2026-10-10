@@ -263,3 +263,11 @@ small.bad { color: var(--bad); font-weight: 600; }
 .only-income { display: none; }
 .form:has(input[name=kind][value=income]:checked) .only-expense { display: none; }
 .form:has(input[name=kind][value=income]:checked) .only-income { display: initial; }
+
+/* ── saldo real e montante sem registo ── */
+.flow { flex-wrap: wrap; row-gap: 12px; }
+.flow button { display: grid; gap: 1px; color: inherit; }
+.flow button small { text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .45); text-underline-offset: 3px; }
+.gap { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--sun) 16%, var(--card)); border-left: 4px solid var(--sun); }
+.gap span { display: grid; min-width: 0; }
+.gap strong { font: 700 20px/1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
