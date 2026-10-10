@@ -310,3 +310,14 @@ small.bad { color: var(--bad); font-weight: 600; }
 .cardlist span { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
 .cardlist i { flex: none; width: 22px; height: 15px; border-radius: 4px; background: var(--c); }
 .cardlist .sum { padding-top: 12px; border-top: 1px solid var(--line); font-weight: 600; }
+
+/* ── dinheiro na mão ── */
+.paycard.cash .pc-top i { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .45), 0 0 0 1px rgba(0, 0, 0, .1); }
+.paycard.cash .pc-top i::after { content: "€"; font: 700 17px/1 var(--display); font-style: normal; color: #7a5410; }
+.paycard.cash::after { /* moedas ao fundo */
+  content: ""; position: absolute; z-index: -1; right: -26px; bottom: -34px; width: 150px; height: 150px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .18); box-shadow: -58px 22px 0 -22px rgba(255, 255, 255, .1), 0 0 0 16px rgba(255, 255, 255, .06);
+}
+.only-cash { display: none; }
+.form:has(input[name=type][value=cash]:checked) .only-card { display: none; }
+.form:has(input[name=type][value=cash]:checked) .only-cash { display: initial; }
