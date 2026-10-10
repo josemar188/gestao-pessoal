@@ -321,3 +321,30 @@ small.bad { color: var(--bad); font-weight: 600; }
 .only-cash { display: none; }
 .form:has(input[name=type][value=cash]:checked) .only-card { display: none; }
 .form:has(input[name=type][value=cash]:checked) .only-cash { display: initial; }
+
+/* ── fim da lista: mais registos, adicionar, ligar ── */
+.btn.more { width: 100%; gap: 8px; background: var(--card); box-shadow: var(--shadow); }
+.btn.more small { font-weight: 400; }
+.listfoot { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 22px; padding: 6px 0 4px; }
+.listfoot button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--blue); font-weight: 600; font-size: 15px; }
+.listfoot b { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--blue-2) 15%, transparent); font-weight: 600; font-size: 15px; line-height: 1; }
+.empty .btn + .btn { margin-top: -6px; }
+
+/* ── escolher registos ── */
+.pick { display: grid; max-height: 46dvh; overflow-y: auto; border-radius: 16px; background: var(--paper); }
+.pick label, .check { display: flex; align-items: center; gap: 12px; padding: 12px 14px; font-size: 16px; font-weight: 400; color: var(--ink); cursor: pointer; }
+.pick label + label { border-top: 1px solid var(--line); }
+.pick input, .check input { position: absolute; opacity: 0; }
+.box { flex: none; width: 24px; height: 24px; border-radius: 8px; border: 2px solid color-mix(in srgb, var(--mute) 55%, transparent); display: grid; place-items: center; }
+input:checked + .box { background: var(--blue-2); border-color: var(--blue-2); }
+input:checked + .box::after { content: ""; width: 11px; height: 6px; border-left: 2.5px solid #fff; border-bottom: 2.5px solid #fff; transform: translateY(-1.5px) rotate(-45deg); }
+input:focus-visible + .box { outline: 2px solid var(--blue-2); outline-offset: 2px; }
+.form .check { padding: 4px 2px; }
+.check > span:last-child { display: grid; gap: 1px; }
+.check small { font-weight: 400; }
+.btn:disabled { opacity: .45; }
+/* os inputs escondidos não podem apanhar toques destinados a outros elementos */
+.seg label, .swatches label, .pick label, .check { position: relative; }
+.seg input, .swatches input, .pick input, .check input { width: 1px; height: 1px; pointer-events: none; }
+.form label.check { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; font-weight: 600; color: var(--ink); }
+.sheet .btn.small { background: var(--soft); justify-self: start; }
