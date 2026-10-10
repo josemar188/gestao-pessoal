@@ -38,7 +38,7 @@ const DEFAULT_CATEGORIES = [
 
 /* ───────────────────────── estado ───────────────────────── */
 
-const S = { tab: 'gastos', month: firstOfMonth(new Date()), expenses: [], categories: [], balances: {}, balancesReady: true, cards: [], cardsReady: true, deckX: 0, q: '', cat: '', user: null, token: null, loadedAt: 0 };
+const S = { tab: 'gastos', month: firstOfMonth(new Date()), expenses: [], categories: [], balances: {}, balancesReady: true, cards: [], cardsReady: true, deckX: 0, deckCard: '', q: '', cat: '', user: null, token: null, loadedAt: 0 };
 let cfg = null;
 let store = null;
 
@@ -420,9 +420,9 @@ function viewGastos() {
 function listHTML() {
   const q = norm(S.q);
   const inCat = (e) => (S.cat === 'income' ? isIncome(e) : !S.cat || (!isIncome(e) && e.category_id === S.cat));
-  const list = monthAll().filter((e) => inCat(e) && (!q || norm(e.merchant).includes(q) || norm(e.note).includes(q)));
+  const list = monthAll().filter((e) => inCat(e) && (!S.deckCard || e.card_id === S.deckCard) && (!q || norm(e.merchant).includes(q) || norm(e.note).includes(q)));
   if (!list.length) {
-    return `<div class="empty"><p>${S.q || S.cat ? 'Nenhum registo corresponde ao filtro.' : 'Ainda não há registos neste mês.'}</p>
+    return `<div class="empty"><p>${S.deckCard && !S.q && !S.cat ? `Sem registos com ${esc(cardById(S.deckCard)?.name || 'este cartão')} neste mês.` : S.q || S.cat ? 'Nenhum registo corresponde ao filtro.' : 'Ainda não há registos neste mês.'}</p>
       <button class="btn primary" data-a="add">Adicionar registo</button></div>`;
   }
   const today = dayKey(new Date());
@@ -430,8 +430,10 @@ function listHTML() {
   const groups = new Map();
   list.forEach((e) => { const k = dayKey(new Date(e.spent_at)); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); });
   const c = S.cat && S.cat !== 'income' ? catById(S.cat) : null;
-  const filtered = S.cat || q
-    ? `<div class="card subtotal"><span><b>${c ? `${esc(c.emoji)} ${esc(c.name)}` : S.cat === 'income' ? 'Entradas' : 'Resultados da pesquisa'}</b><small>${list.length} ${list.length === 1 ? 'registo' : 'registos'} em ${esc(monthName(S.month, { month: 'long' }))}</small></span><strong>${mixedTotal(list)}</strong></div>`
+  const pc = S.deckCard ? cardById(S.deckCard) : null;
+  const what = [c ? `${esc(c.emoji)} ${esc(c.name)}` : S.cat === 'income' ? 'Entradas' : '', pc ? esc(pc.name) : ''].filter(Boolean).join(', ') || 'Resultados da pesquisa';
+  const filtered = S.cat || q || pc
+    ? `<div class="card subtotal"><span><b>${what}</b><small>${list.length} ${list.length === 1 ? 'registo' : 'registos'} em ${esc(monthName(S.month, { month: 'long' }))}</small></span><strong>${mixedTotal(list)}</strong></div>`
     : '';
   return filtered + [...groups].map(([k, items]) => {
     const d = new Date(items[0].spent_at);
@@ -630,7 +632,7 @@ function closeSheet() {
 
 function expenseSheet(e) {
   const isNew = !e;
-  e = e || { amount: '', merchant: '', category_id: '', card: '', note: '', spent_at: new Date().toISOString(), kind: S.cat === 'income' ? 'income' : 'expense' };
+  e = e || { amount: '', merchant: '', category_id: '', card: '', note: '', spent_at: new Date().toISOString(), kind: S.cat === 'income' ? 'income' : 'expense', card_id: S.deckCard || null };
   const inc = isIncome(e);
   openSheet(`
   <form data-f="expense" class="form" data-id="${e.id || ''}">
@@ -765,6 +767,7 @@ const actions = {
   async 'del-card'(t) {
     if (!armed(t)) return;
     await store.deleteCard(t.dataset.id);
+    S.deckCard = ''; S.deckX = 0;
     await loadAll();
     closeSheet(); render(); toast('Cartão eliminado');
   },
@@ -930,7 +933,19 @@ document.addEventListener('change', (ev) => {
 });
 
 // A posição do carrossel sobrevive a cada redesenho do ecrã.
-document.addEventListener('scroll', (ev) => { if (ev.target.id === 'deck') S.deckX = ev.target.scrollLeft; }, true);
+// Ao parar num cartão, a lista passa a mostrar só os registos feitos com ele; no painel do mês mostra todos.
+document.addEventListener('scroll', (ev) => {
+  const d = ev.target;
+  if (d.id !== 'deck') return;
+  S.deckX = d.scrollLeft;
+  const step = d.firstElementChild.offsetWidth + 10;
+  const card = S.cards[Math.round(d.scrollLeft / step) - 1];
+  const id = card ? card.id : '';
+  if (id === S.deckCard) return;
+  S.deckCard = id;
+  const list = $('#list');
+  if (list) list.innerHTML = listHTML();
+}, true);
 
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeSheet(); });
 
