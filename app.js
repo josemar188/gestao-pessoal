@@ -68,6 +68,9 @@ const ICON = {
   income: '<path d="M12 4v10.5M7.8 10.5l4.2 4.2 4.2-4.2M5 19.5h14"/>',
   tag: '<path d="M4 4h7.5l8.5 8.5-7.5 7.5L4 11.5V4z"/><path d="M8.5 8.5h.01"/>',
   edit: '<path d="M4 20l1-4L16 5l3 3L8 19l-4 1zM14 7l3 3"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16zM10 20.5a2.2 2.2 0 0 0 4 0"/>',
+  bill: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6"/>',
 };
 const ICON_CHOICES = ['cart', 'utensils', 'coffee', 'train', 'car', 'home', 'bolt', 'drop', 'wifi', 'phone', 'health', 'dumbbell', 'film', 'bag', 'shirt', 'gift', 'plane', 'book', 'tools', 'user', 'paw', 'box', 'tag'];
 // Categorias antigas guardaram um emoji: traduz-se para o ícone mais próximo.
@@ -82,7 +85,7 @@ const catIcon = (c) => icon(iconKey(c));
 
 /* ───────────────────────── estado ───────────────────────── */
 
-const S = { tab: 'gastos', month: firstOfMonth(new Date()), expenses: [], categories: [], balances: {}, balancesReady: true, cards: [], cardsReady: true, deckX: 0, deckCard: '', limit: 20, q: '', cat: '', user: null, token: null, loadedAt: 0 };
+const S = { tab: 'gastos', month: firstOfMonth(new Date()), expenses: [], categories: [], balances: {}, balancesReady: true, cards: [], cardsReady: true, deckX: 0, deckCard: '', limit: 20, debts: [], debtsReady: true, q: '', cat: '', user: null, token: null, loadedAt: 0 };
 let cfg = null;
 let store = null;
 
@@ -95,6 +98,25 @@ const cardById = (id) => S.cards.find((c) => c.id === id);
 // Movimento líquido dos registos ligados a um cartão (entradas menos gastos), em todos os meses ou só num.
 const cardNet = (id, m) => S.expenses.filter((e) => e.card_id === id && (!m || inMonth(e, m))).reduce((t, e) => t + (isIncome(e) ? 1 : -1) * Number(e.amount || 0), 0);
 const cardBalance = (c) => Math.round((Number(c.initial_balance || 0) + cardNet(c.id)) * 100) / 100;
+/* dívidas: datas guardadas como 'AAAA-MM-DD'; dias até ao vencimento contados em dias de calendário locais */
+const debtDays = (d) => {
+  if (!d.due_date) return null;
+  const [y, m, day] = d.due_date.split('-').map(Number);
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  return Math.round((new Date(y, m - 1, day) - t) / 864e5);
+};
+const debtDue = (d) => {
+  const n = debtDays(d);
+  if (n === null) return { text: 'Sem data', state: '' };
+  if (n < 0) return { text: n === -1 ? 'Venceu ontem' : `Venceu há ${-n} dias`, state: 'bad' };
+  if (n === 0) return { text: 'Vence hoje', state: 'bad' };
+  if (n === 1) return { text: 'Vence amanhã', state: 'warn' };
+  if (n <= 7) return { text: `Vence em ${n} dias`, state: n <= 3 ? 'warn' : '' };
+  const [y, m, day] = d.due_date.split('-').map(Number);
+  return { text: `Vence a ${new Date(y, m - 1, day).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' })}`, state: '' };
+};
+const openDebts = () => S.debts.filter((d) => !d.paid_at).sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999'));
+const urgentDebts = () => openDebts().filter((d) => { const n = debtDays(d); return n !== null && n <= 3; });
 const monthId = (m = S.month) => `${m.getFullYear()}-${pad(m.getMonth() + 1)}`;
 // Saldo do mês: o calculado pelos registos, o real (se foi acertado à mão) e a diferença sem registo.
 function monthBalance(m = S.month) {
@@ -156,6 +178,9 @@ function localStore() {
       db.expenses.forEach((e) => { if (e.category_id === id) e.category_id = null; });
       save();
     },
+    async debts() { return [...(db.debts || [])]; },
+    async saveDebt(row) { db.debts = db.debts || []; return upsert(db.debts, row); },
+    async deleteDebt(id) { db.debts = (db.debts || []).filter((x) => x.id !== id); save(); },
     async cards() { return [...(db.cards || [])].sort((a, b) => a.position - b.position); },
     async saveCard(row) { db.cards = db.cards || []; return upsert(db.cards, row); },
     async deleteCard(id) {
@@ -216,6 +241,13 @@ async function supabaseStore(c) {
     async addCategories(rows) { ok(await sb.from('gastos_categories').insert(rows)); },
     async deleteCategory(id) { ok(await sb.from('gastos_categories').delete().eq('id', id)); },
     // Devolve null se a tabela ainda não existir (falta correr supabase/migracao-cartoes.sql).
+    // Devolve null se a tabela ainda não existir (falta correr supabase/migracao-dividas.sql).
+    async debts() {
+      const { data, error } = await sb.from('gastos_debts').select('*');
+      return error ? null : data;
+    },
+    async saveDebt(row) { return save('gastos_debts', row); },
+    async deleteDebt(id) { ok(await sb.from('gastos_debts').delete().eq('id', id)); },
     async cards() {
       const { data, error } = await sb.from('gastos_cards').select('*').order('position');
       return error ? null : data;
@@ -301,8 +333,10 @@ async function boot() {
 }
 
 async function loadAll() {
-  let balances, cards;
-  [S.categories, S.expenses, balances, cards] = await Promise.all([store.categories(), store.expenses(), store.balances(), store.cards()]);
+  let balances, cards, debts;
+  [S.categories, S.expenses, balances, cards, debts] = await Promise.all([store.categories(), store.expenses(), store.balances(), store.cards(), store.debts()]);
+  S.debtsReady = debts !== null;
+  S.debts = debts || [];
   S.cardsReady = cards !== null;
   S.cards = cards || [];
   S.balancesReady = balances !== null;
@@ -370,19 +404,22 @@ const ICONS = {
   gastos: '<path d="M5 7h14M5 12h14M5 17h9"/>',
   resumo: '<path d="M5 19V10M12 19V5M19 19v-6"/>',
   orcamentos: '<circle cx="12" cy="12" r="8"/><path d="M12 12l4-3"/>',
+  dividas: '<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M8 3v4M16 3v4M9 15l2 2 4-4"/>',
   definicoes: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
 };
-const TABS = [['gastos', 'Gastos'], ['resumo', 'Resumo'], ['orcamentos', 'Orçamentos'], ['definicoes', 'Definições']];
+const TABS = [['gastos', 'Gastos'], ['resumo', 'Resumo'], ['orcamentos', 'Orçamentos'], ['dividas', 'Dívidas'], ['definicoes', 'Definições']];
 
 function render() {
-  const views = { gastos: viewGastos, resumo: viewResumo, orcamentos: viewOrcamentos, definicoes: viewDefinicoes };
+  const views = { gastos: viewGastos, resumo: viewResumo, orcamentos: viewOrcamentos, dividas: viewDividas, definicoes: viewDefinicoes };
+  const titles = { definicoes: 'Definições', dividas: 'Dívidas' };
+  const urgent = urgentDebts().length;
   $('#app').innerHTML = `
-    ${S.tab === 'definicoes' ? '<header class="top"><h1 class="title">Definições</h1></header>' : deck()}
+    ${titles[S.tab] ? `<header class="top"><h1 class="title">${titles[S.tab]}</h1></header>` : deck()}
     <main>${views[S.tab]()}</main>
-    <button class="fab" data-a="add" aria-label="Adicionar registo">+</button>
+    <button class="fab" data-a="add" aria-label="${S.tab === 'dividas' ? 'Adicionar dívida' : 'Adicionar registo'}">+</button>
     <nav class="tabs">${TABS.map(([id, label]) => `
       <button data-a="tab" data-tab="${id}" class="${S.tab === id ? 'on' : ''}" ${S.tab === id ? 'aria-current="page"' : ''}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span>${id === 'dividas' && urgent ? `<em class="badge" aria-label="${urgent} a vencer">${urgent}</em>` : ''}
       </button>`).join('')}
     </nav>`;
   const d = $('#deck');
@@ -452,6 +489,11 @@ function viewGastos() {
   const hasIncome = monthIncome().length > 0;
   const alerts = budgetStatus().filter((b) => b.pct >= 0.8);
   return `
+  ${urgentDebts().map((d) => `
+    <button class="alert ${debtDue(d).state}" data-a="tab" data-tab="dividas">
+      <strong>${esc(debtDue(d).text)}</strong>
+      ${esc(d.name)}: ${fmt(d.amount)}
+    </button>`).join('')}
   ${alerts.map((b) => `
     <button class="alert ${b.pct > 1 ? 'bad' : 'warn'}" data-a="tab" data-tab="orcamentos">
       <strong>${b.pct > 1 ? 'Orçamento ultrapassado' : 'Perto do limite'}</strong>
@@ -648,6 +690,77 @@ const noBudgetRow = (c) => `<button class="row" data-a="cat-edit" data-id="${c.i
   <span class="dot">${catIcon(c)}</span>
   <span class="who"><b>${esc(c.name)}</b></span><span class="link">Definir</span></button>`;
 
+/* ── Dívidas ── */
+
+function debtRow(d) {
+  const due = d.paid_at ? { text: `Paga a ${new Date(d.paid_at).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' })}`, state: '' } : debtDue(d);
+  return `<button class="row ${d.paid_at ? 'paid' : ''}" data-a="debt-edit" data-id="${d.id}">
+    <span class="dot ${due.state}">${icon(d.paid_at ? 'check' : 'bill')}</span>
+    <span class="who"><b>${esc(d.name)}</b><small><span class="${due.state}">${esc(due.text)}</span></small></span>
+    <span class="amt"><b>${fmt(d.amount)}</b></span>
+  </button>`;
+}
+
+function viewDividas() {
+  if (!S.debtsReady) return '<div class="empty"><p>Para usar as dívidas falta correr o ficheiro migracao-dividas.sql no Supabase.</p></div>';
+  const open = openDebts();
+  const paid = S.debts.filter((d) => d.paid_at).sort((a, b) => new Date(b.paid_at) - new Date(a.paid_at)).slice(0, 10);
+  if (!open.length && !paid.length) {
+    return `<div class="empty"><p>Aponta aqui o que tens para pagar e até quando. A app avisa-te quando a data estiver a chegar.</p>
+      <button class="btn primary" data-a="add">Adicionar dívida</button></div>`;
+  }
+  const late = open.filter((d) => { const n = debtDays(d); return n !== null && n < 0; });
+  const next = open.find((d) => d.due_date && debtDays(d) >= 0);
+  return `
+  <section class="card block">
+    <div class="hl"><h2>Por pagar</h2><span class="bigsum">${fmt(sum(open))}</span></div>
+    <small>${open.length} ${open.length === 1 ? 'dívida' : 'dívidas'}${late.length ? `, ${late.length} em atraso (${fmt(sum(late))})` : ''}${next ? `. Próxima: ${esc(next.name)}, ${debtDue(next).text.toLowerCase()}` : ''}.</small>
+  </section>
+  ${open.length ? `<section class="card rows">${open.map(debtRow).join('')}</section>` : '<div class="empty"><p>Não tens nada por pagar.</p></div>'}
+  <div class="listfoot"><button data-a="add"><b>+</b>Adicionar dívida</button></div>
+  ${paid.length ? `<h2 class="sec">Pagas</h2><section class="card rows">${paid.map(debtRow).join('')}</section>` : ''}`;
+}
+
+function debtSheet(d) {
+  const isNew = !d;
+  d = d || { name: '', amount: '', due_date: '', note: '' };
+  openSheet(`
+  <form data-f="debt" class="form" data-id="${d.id || ''}">
+    <h2>${isNew ? 'Nova dívida' : 'Editar dívida'}</h2>
+    <label class="amount">Montante (€)<input name="amount" inputmode="decimal" required placeholder="0,00" value="${isNew ? '' : esc(String(Number(d.amount).toFixed(2)).replace('.', ','))}" autocomplete="off"></label>
+    <label>A quem ou o quê<input name="name" required value="${esc(d.name)}" placeholder="Renda, IMI, empréstimo ao João…" autocomplete="off"></label>
+    <label>Pagar até (opcional)<input name="due_date" type="date" value="${esc(d.due_date || '')}"></label>
+    <label>Nota (opcional)<input name="note" value="${esc(d.note || '')}" autocomplete="off"></label>
+    <div class="actions">
+      <button type="button" class="btn" data-a="close">Cancelar</button>
+      <button class="btn primary">Guardar</button>
+    </div>
+    ${isNew ? '<p class="hint">Depois de guardar, abre a dívida para criar o lembrete no iPhone.</p>' : `
+    ${d.paid_at ? `<button type="button" class="btn" data-a="debt-unpay" data-id="${d.id}">Voltar a marcar como por pagar</button>` : `
+    <button type="button" class="btn" data-a="debt-pay" data-id="${d.id}">${icon('check')}&nbsp; Marcar como paga</button>
+    ${d.due_date ? `<a class="btn" href="${esc(debtIcs(d))}" download="pagar-${esc(norm(d.name).replace(/[^a-z0-9]+/g, '-') || 'divida')}.ics">${icon('bell')}&nbsp; Criar lembrete no iPhone</a>
+    <p class="hint">Abre o Calendário do iPhone com um evento no dia ${esc(d.due_date.split('-').reverse().join('/'))}, com alertas na véspera e no próprio dia às 9h.</p>` : '<p class="hint">Define uma data para poderes criar um lembrete no iPhone.</p>'}`}
+    <button type="button" class="btn danger" data-a="del-debt" data-id="${d.id}">Eliminar dívida</button>`}
+  </form>`);
+  if (isNew) $('.sheet input[name=amount]').focus();
+}
+
+// Evento de calendário (.ics) de dia inteiro, com alerta na véspera e no próprio dia às 9h.
+function debtIcs(d) {
+  const text = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/([,;])/g, '\\$1').replace(/\r?\n/g, '\\n');
+  const day = d.due_date.replace(/-/g, '');
+  const [y, m, dd] = d.due_date.split('-').map(Number);
+  const n = new Date(y, m - 1, dd + 1);
+  const end = `${n.getFullYear()}${pad(n.getMonth() + 1)}${pad(n.getDate())}`;
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const title = text(`Pagar ${d.name} (${fmt(d.amount).replace(/\u00a0/g, ' ')})`);
+  const alarm = (trigger) => ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${title}`, `TRIGGER:${trigger}`, 'END:VALARM'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gastos//PT', 'BEGIN:VEVENT', `UID:${d.id}@gastos`, `DTSTAMP:${stamp}`,
+    `DTSTART;VALUE=DATE:${day}`, `DTEND;VALUE=DATE:${end}`, `SUMMARY:${title}`, ...(d.note ? [`DESCRIPTION:${text(d.note)}`] : []),
+    ...alarm('-PT15H'), ...alarm('PT9H'), 'END:VEVENT', 'END:VCALENDAR'];
+  return `data:text/calendar;charset=utf-8,${encodeURIComponent(lines.join('\r\n'))}`;
+}
+
 /* ── Definições ── */
 
 function viewDefinicoes() {
@@ -704,7 +817,7 @@ function closeSheet() {
 }
 
 function expenseSheet(e) {
-  const isNew = !e;
+  const isNew = !e || e.fromDebt;
   e = e || { amount: '', merchant: '', category_id: '', card: '', note: '', spent_at: new Date().toISOString(), kind: S.cat === 'income' ? 'income' : 'expense', card_id: S.deckCard || null };
   const inc = isIncome(e);
   openSheet(`
@@ -714,7 +827,8 @@ function expenseSheet(e) {
       <label><input type="radio" name="kind" value="expense" ${inc ? '' : 'checked'}><span>Gasto</span></label>
       <label><input type="radio" name="kind" value="income" ${inc ? 'checked' : ''}><span>Entrada</span></label>
     </fieldset>
-    <label class="amount">Montante (€)<input name="amount" inputmode="decimal" required placeholder="0,00" value="${isNew ? '' : esc(String(Number(e.amount).toFixed(2)).replace('.', ','))}" autocomplete="off"></label>
+    <label class="amount">Montante (€)<input name="amount" inputmode="decimal" required placeholder="0,00" value="${e.amount === '' ? '' : esc(String(Number(e.amount).toFixed(2)).replace('.', ','))}" autocomplete="off"></label>
+    ${e.fromDebt ? '<p class="hint">A dívida já ficou marcada como paga. Guarda para o pagamento entrar também nos gastos, ou cancela.</p>' : ''}
     <label><span class="only-expense">Comerciante ou descrição</span><span class="only-income">Origem (por exemplo, Ordenado)</span><input name="merchant" required value="${esc(e.merchant)}" autocomplete="off"></label>
     <label class="only-expense">Categoria<select name="category_id" ${isNew ? 'data-auto="1"' : ''}>
       <option value="">Sem categoria</option>
@@ -852,7 +966,7 @@ function armed(btn) {
   if (btn.dataset.armed) return true;
   btn.dataset.armed = '1';
   btn.textContent = 'Tocar de novo para confirmar';
-  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.a === 'del-expense' ? 'Eliminar registo' : btn.dataset.a === 'del-card' ? 'Eliminar' : btn.dataset.a === 'del-category' ? 'Eliminar categoria' : 'Apagar dados locais'; } }, 4000);
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.a === 'del-expense' ? 'Eliminar registo' : btn.dataset.a === 'del-debt' ? 'Eliminar dívida' : btn.dataset.a === 'del-card' ? 'Eliminar' : btn.dataset.a === 'del-category' ? 'Eliminar categoria' : 'Apagar dados locais'; } }, 4000);
   return false;
 }
 
@@ -870,7 +984,27 @@ const actions = {
   more() { S.limit += 20; $('#list').innerHTML = listHTML(); },
   'link-open'() { linkSheet(cardById(S.deckCard)); },
   'link-all'(t) { const boxes = [...t.form.querySelectorAll('input[name=ids]')]; const on = boxes.some((b) => !b.checked); boxes.forEach((b) => { b.checked = on; }); linkCount(t.form); },
-  add() { expenseSheet(); },
+  add() { if (S.tab === 'dividas') debtSheet(); else expenseSheet(); },
+  'debt-edit'(t) { debtSheet(S.debts.find((d) => d.id === t.dataset.id)); },
+  async 'debt-pay'(t) {
+    const d = S.debts.find((x) => x.id === t.dataset.id);
+    await store.saveDebt({ id: d.id, paid_at: new Date().toISOString() });
+    S.debts = await store.debts();
+    render(); toast('Dívida paga');
+    // deixa o gasto pronto a registar; quem não o quiser na lista de gastos só tem de cancelar
+    expenseSheet({ amount: d.amount, merchant: d.name, category_id: guessCategory(d.name), card: '', note: d.note || '', spent_at: new Date().toISOString(), kind: 'expense', card_id: null, fromDebt: true });
+  },
+  async 'debt-unpay'(t) {
+    await store.saveDebt({ id: t.dataset.id, paid_at: null });
+    S.debts = await store.debts();
+    closeSheet(); render(); toast('Voltou a ficar por pagar');
+  },
+  async 'del-debt'(t) {
+    if (!armed(t)) return;
+    await store.deleteDebt(t.dataset.id);
+    S.debts = S.debts.filter((d) => d.id !== t.dataset.id);
+    closeSheet(); render(); toast('Dívida eliminada');
+  },
   edit(t) { expenseSheet(S.expenses.find((e) => e.id === t.dataset.id)); },
   close() { closeSheet(); },
   'cat-add'() { categorySheet(); },
@@ -1006,6 +1140,15 @@ const forms = {
     }
     await loadAll();
     closeSheet(); render(); toast(`${picked.length} ${picked.length === 1 ? 'registo ligado' : 'registos ligados'}`);
+  },
+  async debt(data, form) {
+    const amount = parseAmount(data.get('amount'));
+    if (!(amount >= 0)) throw new Error('Montante inválido');
+    const row = { name: String(data.get('name')).trim(), amount, due_date: data.get('due_date') || null, note: String(data.get('note')).trim() || null };
+    if (form.dataset.id) row.id = form.dataset.id;
+    await store.saveDebt(row);
+    S.debts = await store.debts();
+    closeSheet(); render(); toast('Dívida guardada');
   },
   async balance(data) {
     const amount = parseAmount(data.get('amount'));
