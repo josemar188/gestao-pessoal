@@ -27,15 +27,58 @@ const CARD_COLORS = ['#1f47b8', '#0f766e', '#7c3aed', '#b4234a', '#b45309', '#1f
 const isCash = (c) => c?.type === 'cash';
 const PALETTE = ['#2f7d5b', '#c2603a', '#3a6ea5', '#8a6d3b', '#b0487a', '#7257b5', '#c99326', '#6b7772'];
 const DEFAULT_CATEGORIES = [
-  { name: 'Supermercado', emoji: '🛒', color: PALETTE[0], keywords: ['continente', 'pingo doce', 'lidl', 'aldi', 'auchan', 'mercadona', 'minipreço', 'minipreco', 'intermarché', 'intermarche'] },
-  { name: 'Restaurantes', emoji: '🍽️', color: PALETTE[1], keywords: ['restaurante', 'café', 'cafe', 'pastelaria', 'mcdonald', 'burger', 'uber eats', 'glovo', 'bolt food', 'pizza'] },
-  { name: 'Transportes', emoji: '🚇', color: PALETTE[2], keywords: ['uber', 'bolt', 'metro', 'carris', 'comboios', 'via verde', 'galp', 'repsol', 'prio'] },
-  { name: 'Casa', emoji: '🏠', color: PALETTE[3], keywords: ['ikea', 'leroy merlin', 'edp', 'epal', 'meo', 'vodafone'] },
-  { name: 'Saúde', emoji: '💊', color: PALETTE[4], keywords: ['farmácia', 'farmacia', 'wells', 'clínica', 'clinica'] },
-  { name: 'Lazer', emoji: '🎬', color: PALETTE[5], keywords: ['cinema', 'netflix', 'spotify', 'fnac', 'steam'] },
-  { name: 'Compras', emoji: '🛍️', color: PALETTE[6], keywords: ['zara', 'amazon', 'worten', 'primark', 'decathlon', 'el corte'] },
-  { name: 'Outros', emoji: '📦', color: PALETTE[7], keywords: [] },
+  { name: 'Supermercado', emoji: 'cart', color: PALETTE[0], keywords: ['continente', 'pingo doce', 'lidl', 'aldi', 'auchan', 'mercadona', 'minipreço', 'minipreco', 'intermarché', 'intermarche'] },
+  { name: 'Restaurantes', emoji: 'utensils', color: PALETTE[1], keywords: ['restaurante', 'café', 'cafe', 'pastelaria', 'mcdonald', 'burger', 'uber eats', 'glovo', 'bolt food', 'pizza'] },
+  { name: 'Transportes', emoji: 'train', color: PALETTE[2], keywords: ['uber', 'bolt', 'metro', 'carris', 'comboios', 'via verde', 'galp', 'repsol', 'prio'] },
+  { name: 'Casa', emoji: 'home', color: PALETTE[3], keywords: ['ikea', 'leroy merlin', 'edp', 'epal', 'meo', 'vodafone'] },
+  { name: 'Saúde', emoji: 'health', color: PALETTE[4], keywords: ['farmácia', 'farmacia', 'wells', 'clínica', 'clinica'] },
+  { name: 'Lazer', emoji: 'film', color: PALETTE[5], keywords: ['cinema', 'netflix', 'spotify', 'fnac', 'steam'] },
+  { name: 'Compras', emoji: 'bag', color: PALETTE[6], keywords: ['zara', 'amazon', 'worten', 'primark', 'decathlon', 'el corte'] },
+  { name: 'Outros', emoji: 'box', color: PALETTE[7], keywords: [] },
 ].map((c, i) => ({ ...c, position: i, budget: null }));
+
+
+/* ───────────────────────── ícones ───────────────────────── */
+// Ícones de linha desenhados à mão (24×24). As categorias guardam a chave do ícone no campo "emoji".
+const ICON = {
+  cart: '<circle cx="9" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/><path d="M3 4h2.3l2.3 11.5h10l1.9-8H6.3"/>',
+  utensils: '<path d="M7 3v18M4.5 3v5a2.5 2.5 0 0 0 5 0V3M17 21V3c-2.2 1.6-3.2 4.2-3.2 7.2V13H17"/>',
+  train: '<rect x="6" y="3" width="12" height="13" rx="3"/><path d="M6 10.5h12M9 13.3h.01M15 13.3h.01M9 16l-2 5M15 16l2 5"/>',
+  car: '<path d="M5 12l1.5-4.6A2 2 0 0 1 8.4 6h7.2a2 2 0 0 1 1.9 1.4L19 12"/><rect x="3" y="12" width="18" height="5.5" rx="1.8"/><path d="M6.5 17.5V19M17.5 17.5V19M7 14.8h.01M17 14.8h.01"/>',
+  home: '<path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5.5h4V20"/>',
+  health: '<rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M12 8.5v7M8.5 12h7"/>',
+  film: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M8 5v14M16 5v14M3 10h5M3 14h5M16 10h5M16 14h5"/>',
+  bag: '<path d="M5 8h14l-1 12.5H6L5 8z"/><path d="M9 8V7a3 3 0 0 1 6 0v1"/>',
+  box: '<path d="M4 8l8-4 8 4v8l-8 4-8-4V8z"/><path d="M4 8l8 4 8-4M12 12v8"/>',
+  wifi: '<path d="M3.5 10a12.5 12.5 0 0 1 17 0M6.8 13.5a7.6 7.6 0 0 1 10.4 0M9.9 16.9a3.1 3.1 0 0 1 4.2 0M12 19.8h.01"/>',
+  phone: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 17.8h2"/>',
+  bolt: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6L13 3z"/>',
+  drop: '<path d="M12 3.5s6 6 6 10.6a6 6 0 0 1-12 0C6 9.5 12 3.5 12 3.5z"/>',
+  coffee: '<path d="M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5V9z"/><path d="M16 10.5h1.3a2.3 2.3 0 0 1 0 4.6H16M8.5 3v2.5M12.5 3v2.5"/>',
+  plane: '<path d="M3 12.5l18-8-6.5 16-3.2-6.3L3 12.5z"/><path d="M11.3 14.2L21 4.5"/>',
+  gift: '<rect x="4" y="9" width="16" height="4" rx="1"/><path d="M6 13v7h12v-7M12 9v11M12 9C10.5 5 6.5 5.5 7.8 8.2 8.3 9 12 9 12 9zM12 9c1.5-4 5.5-3.5 4.2-.8C15.7 9 12 9 12 9z"/>',
+  book: '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M5 17a3 3 0 0 1 3-3h11"/>',
+  dumbbell: '<path d="M7 8v8M4 10v4M17 8v8M20 10v4M7 12h10"/>',
+  tools: '<path d="M14 4.5l5.5 5.5-2 2L12 6.5l2-2zM13 9l-9 9 2 2 9-9"/>',
+  shirt: '<path d="M8.5 4L3.5 7l2 4 2-1v10h9V10l2 1 2-4-5-3a3.5 3.5 0 0 1-7 0z"/>',
+  user: '<circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+  paw: '<circle cx="7" cy="10" r="1.6"/><circle cx="10.5" cy="6.5" r="1.6"/><circle cx="14.5" cy="6.5" r="1.6"/><circle cx="17.5" cy="10.5" r="1.6"/><path d="M8.5 17c0-2.5 1.7-4.5 3.8-4.5s3.7 2 3.7 4.5c0 1.5-1.2 2.2-2.2 2.2-.8 0-1-.4-1.6-.4s-.9.4-1.7.4c-1 0-2-.7-2-2.2z"/>',
+  card: '<rect x="3" y="6" width="18" height="12" rx="2.6"/><path d="M3 10.2h18M7 14.6h3"/>',
+  coins: '<circle cx="9" cy="9" r="5"/><path d="M14.8 10.3a5 5 0 1 1-4.5 4.5"/>',
+  income: '<path d="M12 4v10.5M7.8 10.5l4.2 4.2 4.2-4.2M5 19.5h14"/>',
+  tag: '<path d="M4 4h7.5l8.5 8.5-7.5 7.5L4 11.5V4z"/><path d="M8.5 8.5h.01"/>',
+  edit: '<path d="M4 20l1-4L16 5l3 3L8 19l-4 1zM14 7l3 3"/>',
+};
+const ICON_CHOICES = ['cart', 'utensils', 'coffee', 'train', 'car', 'home', 'bolt', 'drop', 'wifi', 'phone', 'health', 'dumbbell', 'film', 'bag', 'shirt', 'gift', 'plane', 'book', 'tools', 'user', 'paw', 'box', 'tag'];
+// Categorias antigas guardaram um emoji: traduz-se para o ícone mais próximo.
+const LEGACY_ICON = { '🛒': 'cart', '🍽': 'utensils', '🍴': 'utensils', '🍕': 'utensils', '🍔': 'utensils', '☕': 'coffee', '🚇': 'train', '🚆': 'train', '🚌': 'train', '🚗': 'car', '⛽': 'car', '🚕': 'car', '🏠': 'home', '🏡': 'home', '💊': 'health', '🏥': 'health', '🩺': 'health', '🎬': 'film', '🎮': 'film', '🎵': 'film', '🛍': 'bag', '👕': 'shirt', '👗': 'shirt', '📦': 'box', '📶': 'wifi', '🛜': 'wifi', '🌐': 'wifi', '📱': 'phone', '📞': 'phone', '⚡': 'bolt', '💡': 'bolt', '💧': 'drop', '✈': 'plane', '🧳': 'plane', '🎁': 'gift', '📚': 'book', '🎓': 'book', '🏋': 'dumbbell', '⚽': 'dumbbell', '🔧': 'tools', '🛠': 'tools', '🔨': 'tools', '👶': 'user', '👤': 'user', '🐶': 'paw', '🐱': 'paw', '🐾': 'paw' };
+const icon = (key) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[key] || ICON.tag}</svg>`;
+const iconKey = (c) => {
+  const v = String(c?.emoji || '');
+  if (ICON[v]) return v;
+  return LEGACY_ICON[v.replace(/️/g, '')] || LEGACY_ICON[[...v][0]] || 'tag';
+};
+const catIcon = (c) => icon(iconKey(c));
 
 /* ───────────────────────── estado ───────────────────────── */
 
@@ -387,7 +430,7 @@ function header() {
     <div class="sub">${list.length} ${list.length === 1 ? 'gasto' : 'gastos'}${delta}</div>
     ${income > 0 || bal.set ? `<div class="flow">
       <span><small>Entradas</small><b>+${fmt(income)}</b></span>
-      <button data-a="balance" aria-label="Acertar saldo"><small>${bal.set ? 'Saldo real' : 'Saldo'} ✎</small><b>${fmt(bal.real)}</b></button>
+      <button data-a="balance" aria-label="Acertar saldo"><small>${bal.set ? 'Saldo real' : 'Saldo'} ${icon('edit')}</small><b>${fmt(bal.real)}</b></button>
       ${bal.gap ? `<span><small>${gapLabel(bal.gap)}</small><b>${gapValue(bal.gap)}</b></span>` : ''}
     </div>` : ''}
   </header>`;
@@ -412,7 +455,7 @@ function viewGastos() {
   ${alerts.map((b) => `
     <button class="alert ${b.pct > 1 ? 'bad' : 'warn'}" data-a="tab" data-tab="orcamentos">
       <strong>${b.pct > 1 ? 'Orçamento ultrapassado' : 'Perto do limite'}</strong>
-      ${esc(b.c.emoji)} ${esc(b.c.name)}: ${fmt(b.spent)} de ${fmt(b.budget)} (${Math.round(b.pct * 100)}%)
+      ${esc(b.c.name)}: ${fmt(b.spent)} de ${fmt(b.budget)} (${Math.round(b.pct * 100)}%)
     </button>`).join('')}
   <input id="q" type="search" placeholder="Procurar comerciante ou nota" value="${esc(S.q)}" aria-label="Procurar">
   ${used.length + (hasIncome ? 1 : 0) > 1 ? `<div class="chips">
@@ -438,7 +481,7 @@ function listHTML() {
   list.forEach((e) => { const k = dayKey(new Date(e.spent_at)); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); });
   const c = S.cat && S.cat !== 'income' ? catById(S.cat) : null;
   const pc = S.deckCard ? cardById(S.deckCard) : null;
-  const what = [c ? `${esc(c.emoji)} ${esc(c.name)}` : S.cat === 'income' ? 'Entradas' : '', pc ? esc(pc.name) : ''].filter(Boolean).join(', ') || 'Resultados da pesquisa';
+  const what = [c ? esc(c.name) : S.cat === 'income' ? 'Entradas' : '', pc ? esc(pc.name) : ''].filter(Boolean).join(', ') || 'Resultados da pesquisa';
   const filtered = S.cat || q || pc
     ? `<div class="card subtotal"><span><b>${what}</b><small>${list.length} ${list.length === 1 ? 'registo' : 'registos'} em ${esc(monthName(S.month, { month: 'long' }))}</small></span><strong>${mixedTotal(list)}</strong></div>`
     : '';
@@ -469,7 +512,7 @@ function rowHTML(e) {
   if (isIncome(e)) {
     const t = new Date(e.spent_at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
     return `<button class="row" data-a="edit" data-id="${e.id}">
-      <span class="dot" style="--c:var(--good)">💶</span>
+      <span class="dot in">${icon('income')}</span>
       <span class="who"><b>${esc(e.merchant || 'Entrada')}</b><small><span>${esc(['Entrada', cardById(e.card_id)?.name].filter(Boolean).join(', '))}</span></small></span>
       <span class="amt in"><b>+${fmt(e.amount)}</b><small>${t}</small></span>
     </button>`;
@@ -479,7 +522,7 @@ function rowHTML(e) {
   const pc = cardById(e.card_id);
   const meta = esc([c ? c.name : 'Sem categoria', pc?.name].filter(Boolean).join(', '));
   return `<button class="row" data-a="edit" data-id="${e.id}">
-    <span class="dot" style="--c:${color(c?.color)}">${esc(c?.emoji || '❔')}</span>
+    <span class="dot">${catIcon(c)}</span>
     <span class="who"><b>${esc(e.merchant || 'Sem descrição')}</b><small><span>${meta}</span>${e.source === 'apple_pay' ? '<i class="tag">Apple Pay</i>' : ''}</small></span>
     <span class="amt"><b>${fmt(e.amount)}</b><small>${time}</small></span>
   </button>`;
@@ -487,13 +530,23 @@ function rowHTML(e) {
 
 /* ── Resumo ── */
 
+// Colunas. Com um valor muito acima dos outros (uma renda, por exemplo) a escala é limitada para os
+// dias normais continuarem legíveis; a barra que passa da escala aparece cortada, com o valor por cima.
 function columns(items) {
-  const max = Math.max(...items.map((i) => i.value), 0.01);
-  return `<div class="cols">${items.map((i) => `
+  const vals = items.map((i) => i.value).filter((v) => v > 0).sort((a, b) => a - b);
+  const max = vals.length ? vals[vals.length - 1] : 0.01;
+  const typical = vals.length > 2 ? vals[Math.floor((vals.length - 1) * 0.75)] : max;
+  const cap = max > typical * 3 ? typical * 1.6 : max;
+  const cut = cap < max;
+  return `<div class="cols ${cut ? 'has-cut' : ''}">${items.map((i, n) => {
+    const over = i.value > cap;
+    return `
     <button class="col" data-a="tip" data-tip="${esc(i.tip)}" aria-label="${esc(i.tip)}">
-      <span class="bar ${i.on ? 'on' : ''}" style="height:${i.value > 0 ? Math.max((i.value / max) * 100, 2).toFixed(1) : 0}%"></span>
+      ${over ? `<span class="over ${n > items.length / 2 ? 'r' : ''}">${fmt(i.value)}</span>` : ''}
+      <span class="bar ${i.on ? 'on' : ''} ${over ? 'cut' : ''}" style="height:${i.value > 0 ? Math.max((Math.min(i.value, cap) / cap) * 100, 2).toFixed(1) : 0}%"></span>
       <span class="lbl">${esc(i.label)}</span>
-    </button>`).join('')}</div><p class="tip">Toca numa barra para ver o valor.</p>`;
+    </button>`;
+  }).join('')}</div><p class="tip">${cut ? 'A barra cortada passa da escala. ' : ''}Toca numa barra para ver o valor.</p>`;
 }
 
 function viewResumo() {
@@ -526,7 +579,7 @@ function viewResumo() {
   const biggest = list.reduce((a, b) => (Number(b.amount) > Number(a.amount) ? b : a));
   const applePay = list.filter((e) => e.source === 'apple_pay').length;
 
-  const byCat = [...S.categories, { id: null, name: 'Sem categoria', emoji: '❔', color: '#6b7772' }]
+  const byCat = [...S.categories, { id: null, name: 'Sem categoria', emoji: 'tag', color: '#6b7772' }]
     .map((c) => ({ c, v: sum(list.filter((e) => (e.category_id || null) === c.id)) }))
     .filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
 
@@ -553,8 +606,8 @@ function viewResumo() {
     <h2>Por categoria</h2>
     ${byCat.map(({ c, v }) => `
       <div class="hbar">
-        <div class="hl"><span>${esc(c.emoji)} ${esc(c.name)}</span><span><b>${fmt(v)}</b> <small>${Math.round((v / total) * 100)}%</small></span></div>
-        <div class="track"><i style="width:${((v / byCat[0].v) * 100).toFixed(1)}%;background:${color(c.color)}"></i></div>
+        <div class="hl"><span class="lab">${catIcon(c)}${esc(c.name)}</span><span><b>${fmt(v)}</b> <small>${Math.round((v / total) * 100)}%</small></span></div>
+        <div class="track"><i style="width:${((v / byCat[0].v) * 100).toFixed(1)}%"></i></div>
       </div>`).join('')}
   </section>
   <section class="card block"><h2>Por dia</h2>${columns(perDay)}</section>
@@ -585,14 +638,14 @@ function viewOrcamentos() {
   </section>
   ${status.map((b) => `
     <button class="card block budget" data-a="cat-edit" data-id="${b.c.id}">
-      <div class="hl"><span>${esc(b.c.emoji)} ${esc(b.c.name)}</span><span><b>${fmt(b.spent)}</b> <small>de ${fmt(b.budget)}</small></span></div>
+      <div class="hl"><span class="lab">${catIcon(b.c)}${esc(b.c.name)}</span><span><b>${fmt(b.spent)}</b> <small>de ${fmt(b.budget)}</small></span></div>
       ${bar(b)}
     </button>`).join('')}
   ${without.length ? `<h2 class="sec">Sem orçamento</h2><section class="card rows">${without.map(noBudgetRow).join('')}</section>` : ''}`;
 }
 
 const noBudgetRow = (c) => `<button class="row" data-a="cat-edit" data-id="${c.id}">
-  <span class="dot" style="--c:${color(c.color)}">${esc(c.emoji)}</span>
+  <span class="dot">${catIcon(c)}</span>
   <span class="who"><b>${esc(c.name)}</b></span><span class="link">Definir</span></button>`;
 
 /* ── Definições ── */
@@ -605,7 +658,7 @@ function viewDefinicoes() {
   ${S.cardsReady ? `<h2 class="sec">Cartões e dinheiro</h2>
   <section class="card rows">
     ${S.cards.map((c) => `<button class="row" data-a="card-edit" data-id="${c.id}">
-      <span class="dot" style="--c:${color(c.color)}">${isCash(c) ? '🪙' : '💳'}</span>
+      <span class="dot">${icon(isCash(c) ? 'coins' : 'card')}</span>
       <span class="who"><b>${esc(c.name)}</b><small><span>Saldo ${fmt(cardBalance(c))}</span></small></span><span class="link">Editar</span></button>`).join('')}
     <button class="row add" data-a="card-add">+ Novo cartão ou dinheiro</button>
   </section>` : ''}
@@ -613,7 +666,7 @@ function viewDefinicoes() {
   <h2 class="sec">Categorias</h2>
   <section class="card rows">
     ${S.categories.map((c) => `<button class="row" data-a="cat-edit" data-id="${c.id}">
-      <span class="dot" style="--c:${color(c.color)}">${esc(c.emoji)}</span>
+      <span class="dot">${catIcon(c)}</span>
       <span class="who"><b>${esc(c.name)}</b><small><span>${Number(c.budget) > 0 ? `Orçamento ${fmt(c.budget)}/mês` : 'Sem orçamento'}</span></small></span><span class="link">Editar</span></button>`).join('')}
     <button class="row add" data-a="cat-add">+ Nova categoria</button>
   </section>
@@ -665,7 +718,7 @@ function expenseSheet(e) {
     <label><span class="only-expense">Comerciante ou descrição</span><span class="only-income">Origem (por exemplo, Ordenado)</span><input name="merchant" required value="${esc(e.merchant)}" autocomplete="off"></label>
     <label class="only-expense">Categoria<select name="category_id" ${isNew ? 'data-auto="1"' : ''}>
       <option value="">Sem categoria</option>
-      ${S.categories.map((c) => `<option value="${c.id}" ${c.id === e.category_id ? 'selected' : ''}>${esc(c.emoji)} ${esc(c.name)}</option>`).join('')}
+      ${S.categories.map((c) => `<option value="${c.id}" ${c.id === e.category_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
     </select></label>
     <label>Data e hora<input name="spent_at" type="datetime-local" required value="${toLocalInput(new Date(e.spent_at))}"></label>
     ${S.cards.length ? `<label>Pago com<select name="card_id">
@@ -764,16 +817,13 @@ function balanceSheet() {
 
 function categorySheet(c) {
   const isNew = !c;
-  c = c || { name: '', emoji: '📦', color: PALETTE[S.categories.length % PALETTE.length], budget: '', keywords: [] };
+  c = c || { name: '', emoji: 'tag', color: PALETTE[S.categories.length % PALETTE.length], budget: '', keywords: [] };
   openSheet(`
   <form data-f="category" class="form" data-id="${c.id || ''}">
     <h2>${isNew ? 'Nova categoria' : 'Editar categoria'}</h2>
-    <div class="two">
-      <label class="narrow">Ícone<input name="emoji" value="${esc(c.emoji)}" maxlength="4"></label>
-      <label>Nome<input name="name" required value="${esc(c.name)}" autocomplete="off"></label>
-    </div>
-    <fieldset><legend>Cor</legend><div class="swatches">
-      ${PALETTE.map((p) => `<label><input type="radio" name="color" value="${p}" ${p === c.color ? 'checked' : ''}><span style="background:${p}"></span></label>`).join('')}
+    <label>Nome<input name="name" required value="${esc(c.name)}" autocomplete="off"></label>
+    <fieldset><legend>Ícone</legend><div class="iconpick">
+      ${ICON_CHOICES.map((k) => `<label><input type="radio" name="emoji" value="${k}" ${k === iconKey(c) ? 'checked' : ''}><span>${icon(k)}</span></label>`).join('')}
     </div></fieldset>
     <label>Orçamento mensal (€)<input name="budget" inputmode="decimal" placeholder="Sem limite" value="${Number(c.budget) > 0 ? esc(String(c.budget).replace('.', ',')) : ''}" autocomplete="off"></label>
     <label>Comerciantes desta categoria<input name="keywords" value="${esc((c.keywords || []).join(', '))}" placeholder="continente, lidl, …" autocomplete="off" autocapitalize="off"></label>
@@ -970,8 +1020,7 @@ const forms = {
     if (budgetText && !(budget >= 0)) throw new Error('Orçamento inválido');
     const row = {
       name: String(data.get('name')).trim(),
-      emoji: String(data.get('emoji')).trim() || '📦',
-      color: color(data.get('color')),
+      emoji: ICON[data.get('emoji')] ? data.get('emoji') : 'tag',
       budget: budget || null,
       keywords: String(data.get('keywords')).split(',').map((k) => k.trim()).filter(Boolean),
     };
