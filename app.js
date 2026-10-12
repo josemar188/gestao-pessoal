@@ -69,6 +69,7 @@ const ICON = {
   tag: '<path d="M4 4h7.5l8.5 8.5-7.5 7.5L4 11.5V4z"/><path d="M8.5 8.5h.01"/>',
   edit: '<path d="M4 20l1-4L16 5l3 3L8 19l-4 1zM14 7l3 3"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  up: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   chevl: '<path d="M14.5 5.5L8 12l6.5 6.5"/>',
   chevr: '<path d="M9.5 5.5L16 12l-6.5 6.5"/>',
@@ -433,7 +434,7 @@ function render() {
   $('#app').innerHTML = `
     ${titles[S.tab] ? `<header class="top"><h1 class="title">${titles[S.tab]}</h1></header>` : deck()}
     <main>${views[S.tab]()}</main>
-    ${S.tab === 'compras' ? '' : `<button class="fab" data-a="add" aria-label="${S.tab === 'dividas' ? 'Adicionar dívida' : 'Adicionar registo'}">+</button>`}
+    ${S.tab === 'compras' ? '' : `<button class="fab" data-a="add" aria-label="${S.tab === 'dividas' ? 'Adicionar dívida' : 'Adicionar registo'}"><span class="fab-add">${icon('plus')}</span><span class="fab-top">${icon('up')}</span></button>`}
     <nav class="tabs">${TABS.map(([id, label]) => `
       <button data-a="tab" data-tab="${id}" class="${S.tab === id ? 'on' : ''}" ${S.tab === id ? 'aria-current="page"' : ''}>
         <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span>${id === 'dividas' && urgent ? `<em class="badge" aria-label="${urgent} a vencer">${urgent}</em>` : ''}
@@ -1092,6 +1093,8 @@ const actions = {
   'link-open'() { linkSheet(cardById(S.deckCard)); },
   'link-all'(t) { const boxes = [...t.form.querySelectorAll('input[name=ids]')]; const on = boxes.some((b) => !b.checked); boxes.forEach((b) => { b.checked = on; }); linkCount(t.form); },
   add() {
+    // com a página descida, o botão serve para voltar ao topo
+    if (document.body.classList.contains('navhide')) { scrollTo({ top: 0, behavior: 'smooth' }); return; }
     if (S.tab === 'dividas') return debtSheet();
     if (S.tab === 'compras') { const q = $('.quick input'); if (q) { q.scrollIntoView({ block: 'center' }); q.focus(); } return; }
     expenseSheet();
@@ -1391,11 +1394,11 @@ document.addEventListener('scroll', (ev) => {
   if (list) paintList();
 }, true);
 
-// Arrastar o carrossel com o rato (no telemóvel o dedo já faz isto sozinho).
+// Arrastar com o rato o carrossel e os filtros (no telemóvel o dedo já faz isto sozinho).
 let drag = null;
 let dragEnd = 0;
 document.addEventListener('pointerdown', (ev) => {
-  const d = ev.target.closest('#deck');
+  const d = ev.target.closest('#deck, .chips');
   if (!d || ev.pointerType !== 'mouse' || ev.button !== 0) return;
   drag = { d, x: ev.clientX, left: d.scrollLeft, moved: false };
 });
@@ -1412,6 +1415,7 @@ document.addEventListener('pointerup', () => {
   drag = null;
   if (!moved) return;
   dragEnd = Date.now();
+  if (d.id !== 'deck') { d.classList.remove('dragging'); return; }
   const step = d.firstElementChild.offsetWidth + 10;
   const target = Math.round(d.scrollLeft / step) * step;
   d.classList.remove('dragging');
@@ -1419,7 +1423,7 @@ document.addEventListener('pointerup', () => {
   d.scrollTo({ left: target, behavior: 'smooth' });
 });
 document.addEventListener('click', (ev) => {
-  if (Date.now() - dragEnd < 250 && ev.target.closest('#deck')) { ev.stopPropagation(); ev.preventDefault(); }
+  if (Date.now() - dragEnd < 250 && ev.target.closest('#deck, .chips')) { ev.stopPropagation(); ev.preventDefault(); }
 }, true);
 
 // Sem zoom: bloqueia o gesto de pinça do iOS (o duplo toque já está desligado no CSS).
@@ -1430,7 +1434,10 @@ let lastY = 0;
 addEventListener('scroll', () => {
   const y = scrollY;
   if (Math.abs(y - lastY) < 8) return;
-  document.body.classList.toggle('navhide', y > lastY && y > 120);
+  const hide = y > lastY && y > 120;
+  document.body.classList.toggle('navhide', hide);
+  const fab = $('.fab');
+  if (fab) fab.setAttribute('aria-label', hide ? 'Voltar ao topo' : S.tab === 'dividas' ? 'Adicionar dívida' : 'Adicionar registo');
   lastY = y;
 }, { passive: true });
 
@@ -1439,5 +1446,4 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeShe
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 boot();
-
 
