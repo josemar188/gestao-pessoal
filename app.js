@@ -1446,4 +1446,3 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeShe
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 boot();
-
