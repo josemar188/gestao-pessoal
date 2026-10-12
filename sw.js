@@ -1,5 +1,5 @@
 // Guarda a "casca" da app para abrir depressa e sem rede. Os dados vêm sempre do Supabase.
-const CACHE = 'gastos-v14';
+const CACHE = 'gastos-v15';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
@@ -19,8 +19,11 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        // só guarda respostas boas: um erro (por exemplo durante uma publicação no GitHub) nunca fica em cache
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+        }
         return res;
       })
       .catch(() => caches.match(e.request, { ignoreSearch: true }))
