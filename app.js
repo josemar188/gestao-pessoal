@@ -441,6 +441,7 @@ function render() {
     </nav>`;
   const d = $('#deck');
   if (d) d.scrollLeft = S.deckX;
+  watchMore();
 }
 
 // Carrossel: o painel do mês à frente e os cartões atrás, a passar para o lado ao arrastar.
@@ -526,6 +527,25 @@ function viewGastos() {
     ${hasIncome ? `<button data-a="chip" data-cat="income" class="${S.cat === 'income' ? 'on' : ''}"><i style="--c:var(--good)"></i>Entradas</button>` : ''}
   </div>` : ''}
   <div id="list">${listHTML()}</div>`;
+}
+
+// Carregamento contínuo: quando o botão "Mostrar mais" se aproxima do ecrã, carrega sozinho os 20 seguintes.
+const moreWatch = 'IntersectionObserver' in window
+  ? new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting) && $('#list .more')) { S.limit += 20; paintList(); }
+  }, { rootMargin: '0px 0px 400px 0px' })
+  : null;
+function watchMore() {
+  if (!moreWatch) return;
+  moreWatch.disconnect();
+  const b = $('#list .more');
+  if (b) moreWatch.observe(b);
+}
+function paintList() {
+  const list = $('#list');
+  if (!list) return;
+  list.innerHTML = listHTML();
+  watchMore();
 }
 
 function listHTML() {
@@ -1068,7 +1088,7 @@ const actions = {
   },
   refresh() { return refresh(); },
   chip(t) { S.cat = t.dataset.cat; S.limit = 20; render(); },
-  more() { S.limit += 20; $('#list').innerHTML = listHTML(); },
+  more() { S.limit += 20; paintList(); },
   'link-open'() { linkSheet(cardById(S.deckCard)); },
   'link-all'(t) { const boxes = [...t.form.querySelectorAll('input[name=ids]')]; const on = boxes.some((b) => !b.checked); boxes.forEach((b) => { b.checked = on; }); linkCount(t.form); },
   add() {
@@ -1337,7 +1357,7 @@ document.addEventListener('submit', (ev) => {
 });
 
 document.addEventListener('input', (ev) => {
-  if (ev.target.id === 'q') { S.q = ev.target.value; S.limit = 20; $('#list').innerHTML = listHTML(); }
+  if (ev.target.id === 'q') { S.q = ev.target.value; S.limit = 20; paintList(); }
 });
 
 document.addEventListener('change', (ev) => {
@@ -1368,7 +1388,7 @@ document.addEventListener('scroll', (ev) => {
   S.deckCard = id;
   S.limit = 20;
   const list = $('#list');
-  if (list) list.innerHTML = listHTML();
+  if (list) paintList();
 }, true);
 
 // Arrastar o carrossel com o rato (no telemóvel o dedo já faz isto sozinho).
@@ -1419,3 +1439,5 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeShe
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 boot();
+
+
