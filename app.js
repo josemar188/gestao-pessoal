@@ -69,6 +69,10 @@ const ICON = {
   tag: '<path d="M4 4h7.5l8.5 8.5-7.5 7.5L4 11.5V4z"/><path d="M8.5 8.5h.01"/>',
   edit: '<path d="M4 20l1-4L16 5l3 3L8 19l-4 1zM14 7l3 3"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  chevl: '<path d="M14.5 5.5L8 12l6.5 6.5"/>',
+  chevr: '<path d="M9.5 5.5L16 12l-6.5 6.5"/>',
+  trash: '<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16zM10 20.5a2.2 2.2 0 0 0 4 0"/>',
   bill: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6"/>',
 };
@@ -85,7 +89,7 @@ const catIcon = (c) => icon(iconKey(c));
 
 /* ───────────────────────── estado ───────────────────────── */
 
-const S = { tab: 'gastos', month: firstOfMonth(new Date()), expenses: [], categories: [], balances: {}, balancesReady: true, cards: [], cardsReady: true, deckX: 0, deckCard: '', limit: 20, debts: [], debtsReady: true, q: '', cat: '', user: null, token: null, loadedAt: 0 };
+const S = { tab: 'gastos', month: firstOfMonth(new Date()), expenses: [], categories: [], balances: {}, balancesReady: true, cards: [], cardsReady: true, deckX: 0, deckCard: '', limit: 20, debts: [], debtsReady: true, shop: [], shopReady: true, q: '', cat: '', user: null, token: null, loadedAt: 0 };
 let cfg = null;
 let store = null;
 
@@ -178,6 +182,9 @@ function localStore() {
       db.expenses.forEach((e) => { if (e.category_id === id) e.category_id = null; });
       save();
     },
+    async shop() { return [...(db.shop || [])]; },
+    async saveShop(row) { db.shop = db.shop || []; return upsert(db.shop, row); },
+    async deleteShop(ids) { db.shop = (db.shop || []).filter((x) => !ids.includes(x.id)); save(); },
     async debts() { return [...(db.debts || [])]; },
     async saveDebt(row) { db.debts = db.debts || []; return upsert(db.debts, row); },
     async deleteDebt(id) { db.debts = (db.debts || []).filter((x) => x.id !== id); save(); },
@@ -242,6 +249,13 @@ async function supabaseStore(c) {
     async deleteCategory(id) { ok(await sb.from('gastos_categories').delete().eq('id', id)); },
     // Devolve null se a tabela ainda não existir (falta correr supabase/migracao-cartoes.sql).
     // Devolve null se a tabela ainda não existir (falta correr supabase/migracao-dividas.sql).
+    // Devolve null se a tabela ainda não existir (falta correr supabase/migracao-compras.sql).
+    async shop() {
+      const { data, error } = await sb.from('gastos_shopping').select('*');
+      return error ? null : data;
+    },
+    async saveShop(row) { return save('gastos_shopping', row); },
+    async deleteShop(ids) { ok(await sb.from('gastos_shopping').delete().in('id', ids)); },
     async debts() {
       const { data, error } = await sb.from('gastos_debts').select('*');
       return error ? null : data;
@@ -333,8 +347,10 @@ async function boot() {
 }
 
 async function loadAll() {
-  let balances, cards, debts;
-  [S.categories, S.expenses, balances, cards, debts] = await Promise.all([store.categories(), store.expenses(), store.balances(), store.cards(), store.debts()]);
+  let balances, cards, debts, shop;
+  [S.categories, S.expenses, balances, cards, debts, shop] = await Promise.all([store.categories(), store.expenses(), store.balances(), store.cards(), store.debts(), store.shop()]);
+  S.shopReady = shop !== null;
+  S.shop = shop || [];
   S.debtsReady = debts !== null;
   S.debts = debts || [];
   S.cardsReady = cards !== null;
@@ -404,19 +420,20 @@ const ICONS = {
   gastos: '<path d="M5 7h14M5 12h14M5 17h9"/>',
   resumo: '<path d="M5 19V10M12 19V5M19 19v-6"/>',
   orcamentos: '<circle cx="12" cy="12" r="8"/><path d="M12 12l4-3"/>',
+  compras: '<path d="M8 6h12M8 12h12M8 18h12"/><path d="M3.5 6l1 1 2-2M3.5 12l1 1 2-2"/><circle cx="5" cy="18" r="1"/>',
   dividas: '<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M8 3v4M16 3v4M9 15l2 2 4-4"/>',
   definicoes: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
 };
-const TABS = [['gastos', 'Gastos'], ['resumo', 'Resumo'], ['orcamentos', 'Orçamentos'], ['dividas', 'Dívidas'], ['definicoes', 'Definições']];
+const TABS = [['gastos', 'Gastos'], ['resumo', 'Resumo'], ['compras', 'Compras'], ['dividas', 'Dívidas'], ['definicoes', 'Definições']];
 
 function render() {
-  const views = { gastos: viewGastos, resumo: viewResumo, orcamentos: viewOrcamentos, dividas: viewDividas, definicoes: viewDefinicoes };
-  const titles = { definicoes: 'Definições', dividas: 'Dívidas' };
+  const views = { gastos: viewGastos, resumo: viewResumo, orcamentos: viewOrcamentos, compras: viewCompras, dividas: viewDividas, definicoes: viewDefinicoes };
+  const titles = { definicoes: 'Definições', dividas: 'Dívidas', compras: 'Lista de compras' };
   const urgent = urgentDebts().length;
   $('#app').innerHTML = `
     ${titles[S.tab] ? `<header class="top"><h1 class="title">${titles[S.tab]}</h1></header>` : deck()}
     <main>${views[S.tab]()}</main>
-    <button class="fab" data-a="add" aria-label="${S.tab === 'dividas' ? 'Adicionar dívida' : 'Adicionar registo'}">+</button>
+    ${S.tab === 'compras' ? '' : `<button class="fab" data-a="add" aria-label="${S.tab === 'dividas' ? 'Adicionar dívida' : 'Adicionar registo'}">+</button>`}
     <nav class="tabs">${TABS.map(([id, label]) => `
       <button data-a="tab" data-tab="${id}" class="${S.tab === id ? 'on' : ''}" ${S.tab === id ? 'aria-current="page"' : ''}>
         <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[id]}</svg><span>${label}</span>${id === 'dividas' && urgent ? `<em class="badge" aria-label="${urgent} a vencer">${urgent}</em>` : ''}
@@ -437,9 +454,12 @@ function deck() {
       <span class="pc-foot">${net ? `${net > 0 ? '+' : '−'}${fmt(Math.abs(net))} em ${esc(monthName(S.month, { month: 'long' }))}` : `Sem movimentos em ${esc(monthName(S.month, { month: 'long' }))}`}</span>
     </button>`;
   }).join('');
-  return `<div class="deck" id="deck">${header()}${slides}
+  return `<div class="deckwrap">
+    <button class="deck-nav prev" data-a="deck-step" data-n="-1" aria-label="Cartão anterior">${icon('chevl')}</button>
+    <button class="deck-nav next" data-a="deck-step" data-n="1" aria-label="Cartão seguinte">${icon('chevr')}</button>
+    <div class="deck" id="deck">${header()}${slides}
     <button class="paycard add" data-a="card-add"><strong>+</strong><span>Adicionar cartão ou dinheiro</span></button>
-  </div>`;
+  </div></div>`;
 }
 
 function header() {
@@ -495,7 +515,7 @@ function viewGastos() {
       ${esc(d.name)}: ${fmt(d.amount)}
     </button>`).join('')}
   ${alerts.map((b) => `
-    <button class="alert ${b.pct > 1 ? 'bad' : 'warn'}" data-a="tab" data-tab="orcamentos">
+    <button class="alert ${b.pct > 1 ? 'bad' : 'warn'}" data-a="tab" data-tab="resumo">
       <strong>${b.pct > 1 ? 'Orçamento ultrapassado' : 'Perto do limite'}</strong>
       ${esc(b.c.name)}: ${fmt(b.spent)} de ${fmt(b.budget)} (${Math.round(b.pct * 100)}%)
     </button>`).join('')}
@@ -653,7 +673,9 @@ function viewResumo() {
       </div>`).join('')}
   </section>
   <section class="card block"><h2>Por dia</h2>${columns(perDay)}</section>
-  <section class="card block"><h2>Últimos 6 meses</h2>${columns(months)}</section>`;
+  <section class="card block"><h2>Últimos 6 meses</h2>${columns(months)}</section>
+  <h2 class="sec">Orçamentos</h2>
+  ${viewOrcamentos()}`;
 }
 
 /* ── Orçamentos ── */
@@ -689,6 +711,70 @@ function viewOrcamentos() {
 const noBudgetRow = (c) => `<button class="row" data-a="cat-edit" data-id="${c.id}">
   <span class="dot">${catIcon(c)}</span>
   <span class="who"><b>${esc(c.name)}</b></span><span class="link">Definir</span></button>`;
+
+/* ── Lista de compras ── */
+
+// "2 leite 1,20", "1,5 kg batatas", "pão" → quantidade, nome e preço estimado opcionais.
+function parseShop(text) {
+  let s = String(text).trim().replace(/\s+/g, ' ');
+  let price = null;
+  const p = s.match(/\s(\d+(?:[.,]\d{1,2}))\s*€?$/) || s.match(/\s€\s?(\d+(?:[.,]\d{1,2}))$/);
+  if (p) { price = parseAmount(p[1]); s = s.slice(0, p.index).trim(); }
+  let qty = null;
+  const q = s.match(/^(\d+(?:[.,]\d+)?\s?(?:x|un|kg|g|l|ml|cx|pack)?)\s+(.+)$/i);
+  if (q) { qty = q[1].replace(/\s/g, ''); s = q[2]; }
+  return { name: s.charAt(0).toUpperCase() + s.slice(1), qty, price: Number.isFinite(price) ? price : null };
+}
+const shopTotal = (items) => items.reduce((t, i) => t + (Number(i.price) || 0), 0);
+
+function shopRow(i) {
+  return `<div class="row shop ${i.done ? 'done' : ''}">
+    <button class="tick ${i.done ? 'on' : ''}" data-a="shop-toggle" data-id="${i.id}" aria-label="${i.done ? 'Voltar a pôr na lista' : 'Marcar como no carrinho'}"><span class="box" aria-hidden="true"></span></button>
+    <button class="who" data-a="shop-edit" data-id="${i.id}"><b>${esc(i.name)}</b>${i.qty ? `<small><span>${esc(i.qty)}</span></small>` : ''}</button>
+    ${Number(i.price) > 0 ? `<span class="amt"><b>${fmt(i.price)}</b></span>` : ''}
+  </div>`;
+}
+
+function viewCompras() {
+  if (!S.shopReady) return '<div class="empty"><p>Para usar a lista de compras falta correr o ficheiro migracao-compras.sql no Supabase.</p></div>';
+  const order = (a, b) => (a.position || 0) - (b.position || 0);
+  const todo = S.shop.filter((i) => !i.done).sort(order);
+  const cart = S.shop.filter((i) => i.done).sort(order);
+  const est = shopTotal(todo);
+  return `
+  <form data-f="shop-quick" class="quick card">
+    <input name="q" placeholder="Adicionar artigo, por exemplo: 2 leite 1,20" autocomplete="off" enterkeyhint="done" aria-label="Novo artigo">
+    <button class="btn primary small" aria-label="Adicionar">${icon('plus')}</button>
+  </form>
+  ${S.shop.length ? '' : '<div class="empty"><p>Escreve o que precisas de comprar. A quantidade vai à frente e o preço estimado no fim, ambos opcionais.</p></div>'}
+  ${todo.length ? `
+  <div class="listhead"><span>${todo.length} por comprar</span>${est > 0 ? `<span>estimado ${fmt(est)}</span>` : ''}</div>
+  <section class="card rows">${todo.map(shopRow).join('')}</section>` : S.shop.length ? '<div class="empty"><p>Está tudo no carrinho.</p></div>' : ''}
+  ${cart.length ? `
+  <div class="listhead"><span>No carrinho, ${cart.length}</span>${shopTotal(cart) > 0 ? `<span>${fmt(shopTotal(cart))}</span>` : ''}</div>
+  <section class="card rows">${cart.map(shopRow).join('')}</section>
+  <div class="shopacts">
+    <button class="btn primary" data-a="shop-register">Registar gasto</button>
+    <button class="btn" data-a="shop-clear">Limpar carrinho</button>
+  </div>` : ''}`;
+}
+
+function shopSheet(i) {
+  openSheet(`
+  <form data-f="shop" class="form" data-id="${i.id}">
+    <h2>Editar artigo</h2>
+    <label>Artigo<input name="name" required value="${esc(i.name)}" autocomplete="off"></label>
+    <div class="two wide">
+      <label>Quantidade<input name="qty" value="${esc(i.qty || '')}" placeholder="2, 1 kg…" autocomplete="off"></label>
+      <label>Preço estimado (€)<input name="price" inputmode="decimal" value="${Number(i.price) > 0 ? esc(String(Number(i.price).toFixed(2)).replace('.', ',')) : ''}" placeholder="Opcional" autocomplete="off"></label>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" data-a="close">Cancelar</button>
+      <button class="btn primary">Guardar</button>
+    </div>
+    <button type="button" class="btn danger" data-a="shop-del" data-id="${i.id}">Eliminar artigo</button>
+  </form>`);
+}
 
 /* ── Dívidas ── */
 
@@ -817,17 +903,18 @@ function closeSheet() {
 }
 
 function expenseSheet(e) {
-  const isNew = !e || e.fromDebt;
+  const isNew = !e || e.fromDebt || e.fromShop;
   e = e || { amount: '', merchant: '', category_id: '', card: '', note: '', spent_at: new Date().toISOString(), kind: S.cat === 'income' ? 'income' : 'expense', card_id: S.deckCard || null };
   const inc = isIncome(e);
   openSheet(`
-  <form data-f="expense" class="form" data-id="${e.id || ''}">
+  <form data-f="expense" class="form" data-id="${e.id || ''}" data-shop="${e.fromShop ? 1 : ''}">
     <h2>${isNew ? 'Novo registo' : 'Editar registo'}</h2>
     <fieldset class="seg"><legend class="sr">Tipo</legend>
       <label><input type="radio" name="kind" value="expense" ${inc ? '' : 'checked'}><span>Gasto</span></label>
       <label><input type="radio" name="kind" value="income" ${inc ? 'checked' : ''}><span>Entrada</span></label>
     </fieldset>
     <label class="amount">Montante (€)<input name="amount" inputmode="decimal" required placeholder="0,00" value="${e.amount === '' ? '' : esc(String(Number(e.amount).toFixed(2)).replace('.', ','))}" autocomplete="off"></label>
+    ${e.fromShop ? '<p class="hint">Confirma o valor pago. Ao guardar, os artigos do carrinho saem da lista.</p>' : ''}
     ${e.fromDebt ? '<p class="hint">A dívida já ficou marcada como paga. Guarda para o pagamento entrar também nos gastos, ou cancela.</p>' : ''}
     <label><span class="only-expense">Comerciante ou descrição</span><span class="only-income">Origem (por exemplo, Ordenado)</span><input name="merchant" required value="${esc(e.merchant)}" autocomplete="off"></label>
     <label class="only-expense">Categoria<select name="category_id" ${isNew ? 'data-auto="1"' : ''}>
@@ -966,12 +1053,12 @@ function armed(btn) {
   if (btn.dataset.armed) return true;
   btn.dataset.armed = '1';
   btn.textContent = 'Tocar de novo para confirmar';
-  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.a === 'del-expense' ? 'Eliminar registo' : btn.dataset.a === 'del-debt' ? 'Eliminar dívida' : btn.dataset.a === 'del-card' ? 'Eliminar' : btn.dataset.a === 'del-category' ? 'Eliminar categoria' : 'Apagar dados locais'; } }, 4000);
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.a === 'del-expense' ? 'Eliminar registo' : btn.dataset.a === 'shop-clear' ? 'Limpar carrinho' : btn.dataset.a === 'del-debt' ? 'Eliminar dívida' : btn.dataset.a === 'del-card' ? 'Eliminar' : btn.dataset.a === 'del-category' ? 'Eliminar categoria' : 'Apagar dados locais'; } }, 4000);
   return false;
 }
 
 const actions = {
-  tab(t) { S.tab = t.dataset.tab; S.limit = 20; render(); scrollTo(0, 0); },
+  tab(t) { S.tab = t.dataset.tab; S.limit = 20; render(); scrollTo(0, 0); document.body.classList.remove('navhide'); },
   month(t) {
     const n = Number(t.dataset.n);
     const next = n === 0 ? firstOfMonth(new Date()) : addMonths(S.month, n);
@@ -984,7 +1071,41 @@ const actions = {
   more() { S.limit += 20; $('#list').innerHTML = listHTML(); },
   'link-open'() { linkSheet(cardById(S.deckCard)); },
   'link-all'(t) { const boxes = [...t.form.querySelectorAll('input[name=ids]')]; const on = boxes.some((b) => !b.checked); boxes.forEach((b) => { b.checked = on; }); linkCount(t.form); },
-  add() { if (S.tab === 'dividas') debtSheet(); else expenseSheet(); },
+  add() {
+    if (S.tab === 'dividas') return debtSheet();
+    if (S.tab === 'compras') { const q = $('.quick input'); if (q) { q.scrollIntoView({ block: 'center' }); q.focus(); } return; }
+    expenseSheet();
+  },
+  'deck-step'(t) {
+    const d = $('#deck');
+    const step = d.firstElementChild.offsetWidth + 10;
+    d.scrollTo({ left: (Math.round(d.scrollLeft / step) + Number(t.dataset.n)) * step, behavior: 'smooth' });
+  },
+  async 'shop-toggle'(t) {
+    const i = S.shop.find((x) => x.id === t.dataset.id);
+    i.done = !i.done;
+    render();
+    await store.saveShop({ id: i.id, done: i.done });
+  },
+  'shop-edit'(t) { shopSheet(S.shop.find((x) => x.id === t.dataset.id)); },
+  async 'shop-del'(t) {
+    await store.deleteShop([t.dataset.id]);
+    S.shop = S.shop.filter((x) => x.id !== t.dataset.id);
+    closeSheet(); render(); toast('Artigo eliminado');
+  },
+  async 'shop-clear'(t) {
+    if (!armed(t)) return;
+    const ids = S.shop.filter((x) => x.done).map((x) => x.id);
+    await store.deleteShop(ids);
+    S.shop = S.shop.filter((x) => !x.done);
+    render(); toast('Carrinho limpo');
+  },
+  'shop-register'() {
+    const cart = S.shop.filter((x) => x.done);
+    const total = shopTotal(cart);
+    expenseSheet({ amount: total > 0 ? total : '', merchant: 'Lista de compras', category_id: S.categories.find((c) => norm(c.name) === 'supermercado')?.id || '', card: '',
+      note: cart.map((x) => (x.qty ? `${x.qty} ${x.name}` : x.name)).join(', '), spent_at: new Date().toISOString(), kind: 'expense', card_id: null, fromShop: true });
+  },
   'debt-edit'(t) { debtSheet(S.debts.find((d) => d.id === t.dataset.id)); },
   async 'debt-pay'(t) {
     const d = S.debts.find((x) => x.id === t.dataset.id);
@@ -1060,6 +1181,8 @@ const actions = {
       const main = await s.saveCard({ name: 'Santander', color: CARD_COLORS[3], initial_balance: 0, position: 0, wallet_match: null });
       await s.saveCard({ name: 'Revolut', color: CARD_COLORS[5], initial_balance: 240, position: 1, wallet_match: null });
       await s.saveCard({ name: 'Dinheiro', type: 'cash', color: CARD_COLORS[6], initial_balance: 85, position: 2, wallet_match: null });
+      let pos = 1;
+      for (const t of ['2 leite 0,95', 'Pão', '1 kg tomate 2,40', 'Detergente da loiça 2,99', 'Café 4,49']) await s.saveShop({ ...parseShop(t), done: false, position: pos++ });
       for (const e of demoData(await s.categories())) await s.saveExpense({ ...e, card_id: e.kind === 'income' || e.source === 'apple_pay' ? main.id : null });
     }
     await boot();
@@ -1108,6 +1231,11 @@ const forms = {
     const saved = await store.saveExpense(row);
     S.expenses = [saved, ...S.expenses.filter((e) => e.id !== saved.id)].sort((a, b) => new Date(b.spent_at) - new Date(a.spent_at));
     if (!inMonth(saved, S.month) && when <= new Date()) S.month = firstOfMonth(when);
+    if (form.dataset.shop) {
+      const ids = S.shop.filter((x) => x.done).map((x) => x.id);
+      if (ids.length) await store.deleteShop(ids);
+      S.shop = S.shop.filter((x) => !x.done);
+    }
     closeSheet(); render(); toast('Registo guardado');
   },
   async card(data, form) {
@@ -1140,6 +1268,25 @@ const forms = {
     }
     await loadAll();
     closeSheet(); render(); toast(`${picked.length} ${picked.length === 1 ? 'registo ligado' : 'registos ligados'}`);
+  },
+  async 'shop-quick'(data, form) {
+    const text = String(data.get('q')).trim();
+    if (!text) return;
+    const row = { ...parseShop(text), done: false, position: Date.now() };
+    const saved = await store.saveShop(row);
+    S.shop.push(saved);
+    render();
+    const q = $('.quick input');
+    if (q) q.focus();
+  },
+  async shop(data, form) {
+    const priceText = String(data.get('price')).trim();
+    const price = priceText ? parseAmount(priceText) : null;
+    if (priceText && !(price >= 0)) throw new Error('Preço inválido');
+    const row = { id: form.dataset.id, name: String(data.get('name')).trim(), qty: String(data.get('qty')).trim() || null, price };
+    await store.saveShop(row);
+    Object.assign(S.shop.find((x) => x.id === row.id), row);
+    closeSheet(); render(); toast('Artigo guardado');
   },
   async debt(data, form) {
     const amount = parseAmount(data.get('amount'));
@@ -1223,6 +1370,49 @@ document.addEventListener('scroll', (ev) => {
   const list = $('#list');
   if (list) list.innerHTML = listHTML();
 }, true);
+
+// Arrastar o carrossel com o rato (no telemóvel o dedo já faz isto sozinho).
+let drag = null;
+let dragEnd = 0;
+document.addEventListener('pointerdown', (ev) => {
+  const d = ev.target.closest('#deck');
+  if (!d || ev.pointerType !== 'mouse' || ev.button !== 0) return;
+  drag = { d, x: ev.clientX, left: d.scrollLeft, moved: false };
+});
+document.addEventListener('pointermove', (ev) => {
+  if (!drag) return;
+  const dx = ev.clientX - drag.x;
+  if (!drag.moved && Math.abs(dx) < 6) return;
+  if (!drag.moved) { drag.moved = true; drag.d.classList.add('dragging'); }
+  drag.d.scrollLeft = drag.left - dx;
+});
+document.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const { d, moved } = drag;
+  drag = null;
+  if (!moved) return;
+  dragEnd = Date.now();
+  const step = d.firstElementChild.offsetWidth + 10;
+  const target = Math.round(d.scrollLeft / step) * step;
+  d.classList.remove('dragging');
+  d.scrollLeft = d.scrollLeft; // fixa a posição antes de voltar a ligar o encaixe
+  d.scrollTo({ left: target, behavior: 'smooth' });
+});
+document.addEventListener('click', (ev) => {
+  if (Date.now() - dragEnd < 250 && ev.target.closest('#deck')) { ev.stopPropagation(); ev.preventDefault(); }
+}, true);
+
+// Sem zoom: bloqueia o gesto de pinça do iOS (o duplo toque já está desligado no CSS).
+document.addEventListener('gesturestart', (ev) => ev.preventDefault());
+
+// Barra de separadores: esconde ao descer, volta ao subir.
+let lastY = 0;
+addEventListener('scroll', () => {
+  const y = scrollY;
+  if (Math.abs(y - lastY) < 8) return;
+  document.body.classList.toggle('navhide', y > lastY && y > 120);
+  lastY = y;
+}, { passive: true });
 
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeSheet(); });
 
