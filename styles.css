@@ -437,3 +437,56 @@ input:checked + .box::after { border-color: var(--on-blue); }
 .who small span.bad { color: var(--bad); font-weight: 600; }
 a.btn { text-decoration: none; color: inherit; }
 .alert:not(.warn):not(.bad) { border-color: var(--line); }
+
+/* ════════ sem zoom, barra no fundo, carrossel com rato, lista de compras ════════ */
+html { touch-action: manipulation; }
+#app { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+
+/* barra de separadores encostada ao fundo; esconde-se ao descer a página */
+.tabs {
+  left: 0; right: 0; bottom: 0; transform: none; width: auto; justify-content: center;
+  padding: 4px max(8px, calc(50vw - 270px)) env(safe-area-inset-bottom); border-radius: 0;
+  box-shadow: 0 -1px 0 var(--line); transition: transform .25s ease;
+}
+.tabs button { height: 54px; border-radius: 14px; max-width: 120px; }
+body.navhide .tabs { transform: translateY(100%); }
+.fab { bottom: calc(76px + env(safe-area-inset-bottom)); transition: transform .25s ease; }
+body.navhide .fab { transform: translateY(60px); }
+#toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
+@media (prefers-reduced-motion: reduce) { .tabs, .fab { transition: none; } }
+
+/* carrossel: arrastar com o rato e setas em ecrãs com ponteiro */
+.deckwrap { position: relative; }
+.deck { user-select: none; -webkit-user-select: none; }
+.deck.dragging { scroll-snap-type: none; cursor: grabbing; }
+.deck.dragging * { pointer-events: none; }
+.deck-nav { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .deck { cursor: grab; }
+  .deck-nav {
+    display: grid; place-items: center; position: absolute; z-index: 2; top: calc(50% - 30px); width: 36px; height: 36px; border-radius: 50%;
+    background: var(--card); color: var(--ink); box-shadow: var(--shadow), 0 0 0 1px var(--line); opacity: 0; transition: opacity .2s;
+  }
+  .deck-nav.prev { left: -6px; }
+  .deck-nav.next { right: -6px; }
+  .deckwrap:hover .deck-nav { opacity: 1; }
+  .deck-nav .ic { width: 18px; height: 18px; }
+}
+
+/* lista de compras */
+.quick { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 16px; }
+.quick input { flex: 1; min-width: 0; height: 44px; border: 0; background: none; font-size: 16px; color: var(--ink); outline: none; }
+.quick input::placeholder { color: var(--mute); }
+.quick .btn.small { width: 44px; height: 44px; padding: 0; border-radius: 12px; background: var(--blue-2); color: var(--on-blue); }
+.listhead { display: flex; justify-content: space-between; margin: 6px 6px -4px; font-size: 14px; font-weight: 600; color: var(--mute); font-variant-numeric: tabular-nums; }
+.listhead span:first-child { color: var(--ink); }
+.row.shop { padding: 4px 14px 4px 6px; gap: 4px; min-height: 58px; }
+.row.shop .who { text-align: left; padding: 10px 6px; }
+.tick { flex: none; display: grid; place-items: center; width: 44px; height: 44px; }
+.tick .box { border-radius: 50%; }
+.tick.on .box { background: var(--blue-2); border-color: var(--blue-2); }
+.tick.on .box::after { content: ""; width: 11px; height: 6px; border-left: 2.5px solid var(--on-blue); border-bottom: 2.5px solid var(--on-blue); transform: translateY(-1.5px) rotate(-45deg); }
+.row.shop.done b { text-decoration: line-through; text-decoration-color: var(--mute); color: var(--mute); font-weight: 500; }
+.row.shop.done .amt b { color: var(--mute); }
+.shopacts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.two.wide { grid-template-columns: 1fr 1fr; }
