@@ -25,6 +25,7 @@ const parseAmount = (s) => { const n = Number(String(s).replace(/\s|€/g, '').r
 
 const CARD_COLORS = ['#1f47b8', '#0f766e', '#7c3aed', '#b4234a', '#b45309', '#1f2937', '#15803d'];
 const isCash = (c) => c?.type === 'cash';
+const defaultCard = () => S.cards.find((c) => c.is_default);
 const PALETTE = ['#2f7d5b', '#c2603a', '#3a6ea5', '#8a6d3b', '#b0487a', '#7257b5', '#c99326', '#6b7772'];
 const DEFAULT_CATEGORIES = [
   { name: 'Supermercado', emoji: 'cart', color: PALETTE[0], keywords: ['continente', 'pingo doce', 'lidl', 'aldi', 'auchan', 'mercadona', 'minipreço', 'minipreco', 'intermarché', 'intermarche'] },
@@ -269,6 +270,7 @@ async function supabaseStore(c) {
     },
     async saveCard(row) {
       try { return await save('gastos_cards', row); } catch (err) {
+        if (/is_default/i.test(err.message)) throw new Error('Falta correr o ficheiro migracao-cartao-principal.sql no Supabase.');
         if (/'type'|\btype\b.*column|column.*\btype\b/i.test(err.message)) throw new Error('Falta correr o ficheiro migracao-dinheiro.sql no Supabase.');
         throw err;
       }
@@ -879,7 +881,7 @@ function viewDefinicoes() {
   <section class="card rows">
     ${S.cards.map((c) => `<button class="row" data-a="card-edit" data-id="${c.id}">
       <span class="dot">${icon(isCash(c) ? 'coins' : 'card')}</span>
-      <span class="who"><b>${esc(c.name)}</b><small><span>Saldo ${fmt(cardBalance(c))}</span></small></span><span class="link">Editar</span></button>`).join('')}
+      <span class="who"><b>${esc(c.name)}</b><small><span>Saldo ${fmt(cardBalance(c))}${c.is_default ? ', principal' : ''}</span></small></span><span class="link">Editar</span></button>`).join('')}
     <button class="row add" data-a="card-add">+ Novo cartão ou dinheiro</button>
   </section>` : ''}
 
@@ -925,7 +927,7 @@ function closeSheet() {
 
 function expenseSheet(e) {
   const isNew = !e || e.fromDebt || e.fromShop;
-  e = e || { amount: '', merchant: '', category_id: '', card: '', note: '', spent_at: new Date().toISOString(), kind: S.cat === 'income' ? 'income' : 'expense', card_id: S.deckCard || null };
+  e = e || { amount: '', merchant: '', category_id: '', card: '', note: '', spent_at: new Date().toISOString(), kind: S.cat === 'income' ? 'income' : 'expense', card_id: S.deckCard || defaultCard()?.id || null };
   const inc = isIncome(e);
   openSheet(`
   <form data-f="expense" class="form" data-id="${e.id || ''}" data-shop="${e.fromShop ? 1 : ''}">
@@ -975,6 +977,7 @@ function cardSheet(c) {
     <fieldset><legend>Cor</legend><div class="swatches">
       ${CARD_COLORS.map((p) => `<label><input type="radio" name="color" value="${p}" ${p === c.color ? 'checked' : ''}><span style="background:${p}"></span></label>`).join('')}
     </div></fieldset>
+    <label class="check"><input type="checkbox" name="is_default" ${c.is_default ? 'checked' : ''}><span class="box" aria-hidden="true"></span><span>Principal<small>Já vem escolhido nos registos novos e recebe os pagamentos Apple Pay cujo cartão não for reconhecido.</small></span></label>
     <label class="only-card">Nome na Carteira do iPhone (opcional)<input name="wallet_match" value="${esc(c.wallet_match || '')}" placeholder="Igual ao nome, se ficar vazio" autocomplete="off"></label>
     <p class="hint only-card">Os pagamentos Apple Pay cujo cartão contenha este texto ficam ligados aqui sozinhos.</p>
     <div class="actions">
@@ -1270,10 +1273,13 @@ const forms = {
       type: data.get('type') === 'cash' ? 'cash' : 'card',
       wallet_match: data.get('type') === 'cash' ? null : String(data.get('wallet_match')).trim() || null,
       color: color(data.get('color')),
+      is_default: !!data.get('is_default'),
       // o saldo é sempre: saldo inicial + movimentos ligados; por isso guarda-se o inicial que dá o saldo pedido
       initial_balance: Math.round((balance - (id ? cardNet(id) : 0)) * 100) / 100,
     };
     if (id) row.id = id; else row.position = S.cards.length;
+    // só pode haver um principal
+    if (row.is_default) await Promise.all(S.cards.filter((c) => c.is_default && c.id !== id).map((c) => store.saveCard({ id: c.id, is_default: false })));
     await store.saveCard(row);
     S.cards = await store.cards();
     closeSheet(); render(); toast('Guardado');
